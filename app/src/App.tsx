@@ -3,6 +3,8 @@ import { useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import PatientsPage from './pages/PatientsPage'
+import CadastroPage from './pages/CadastroPage'
+import PatientDetailPage from './pages/PatientDetailPage'
 import AppointmentsPage from './pages/AppointmentsPage'
 import AppLayout from './components/layout/AppLayout'
 
@@ -27,6 +29,9 @@ function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/pacientes" element={<PatientsPage />} />
+        <Route path="/pacientes/novo" element={<CadastroPage />} />
+        <Route path="/pacientes/:id" element={<PatientDetailPage />} />
+        <Route path="/pacientes/:id/editar" element={<CadastroPage />} />
         <Route path="/agenda" element={<AppointmentsPage />} />
       </Routes>
     </AppLayout>
