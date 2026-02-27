@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    // GitHub Copilot
+    "GitHub.copilot",
+    "GitHub.copilot-chat",
+    // Controle de voz (VS Code Speech)
+    "ms-vscode.vscode-speech",
+    // TypeScript / JavaScript
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    // Git
+    "eamodio.gitlens",
+    // Utilitários
+    "EditorConfig.EditorConfig",
+    "streetsidesoftware.code-spell-checker-portuguese-brazilian"
+  ]
+}
