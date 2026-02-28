@@ -9,20 +9,20 @@ import type { Appointment } from '../types'
 
 function mapRow(row: Record<string, unknown>): Appointment {
   return {
-    id:               row.id as string,
-    clinicId:         row.clinic_id as string,
-    patientId:        row.patient_id as string,
-    professionalId:   row.professional_id as string,
-    startsAt:         row.starts_at as string,
-    endsAt:           row.ends_at as string,
-    status:           row.status as Appointment['status'],
-    notes:            (row.notes as string) ?? null,
+    id: row.id as string,
+    clinicId: row.clinic_id as string,
+    patientId: row.patient_id as string,
+    professionalId: row.professional_id as string,
+    startsAt: row.starts_at as string,
+    endsAt: row.ends_at as string,
+    status: row.status as Appointment['status'],
+    notes: (row.notes as string) ?? null,
     chargeAmountCents: (row.charge_amount_cents as number) ?? null,
-    paidAmountCents:   (row.paid_amount_cents as number) ?? null,
-    paidAt:           (row.paid_at as string) ?? null,
-    createdAt:        row.created_at as string,
-    patient:          undefined,
-    professional:     row.professional as Appointment['professional'],
+    paidAmountCents: (row.paid_amount_cents as number) ?? null,
+    paidAt: (row.paid_at as string) ?? null,
+    createdAt: row.created_at as string,
+    patient: undefined,
+    professional: row.professional as Appointment['professional'],
   }
 }
 

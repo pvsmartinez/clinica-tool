@@ -72,10 +72,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasPermission = (key: string): boolean => {
     if (!profile) return false
     const map: Record<string, Record<string, boolean>> = {
-      admin:        { canManagePatients: true, canManageAgenda: true, canManageProfessionals: true, canViewFinancial: true, canManageSettings: true },
+      admin: { canManagePatients: true, canManageAgenda: true, canManageProfessionals: true, canViewFinancial: true, canManageSettings: true },
       receptionist: { canManagePatients: true, canManageAgenda: true, canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
       professional: { canManagePatients: false, canManageAgenda: true, canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-      patient:      { canManagePatients: false, canManageAgenda: false, canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
+      patient: { canManagePatients: false, canManageAgenda: false, canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
     }
     return map[profile.role]?.[key] ?? false
   }
