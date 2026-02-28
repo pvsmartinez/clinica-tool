@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, FloppyDisk } from '@phosphor-icons/react'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, FloppyDisk, SpinnerGap } from '@phosphor-icons/react'
+import { IMaskInput } from 'react-imask'
+import cep from 'cep-promise'
 import Input from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import TextArea from '../components/ui/TextArea'
-import { usePatients } from '../hooks/usePatients'
-import { formatCPF, formatPhone } from '../utils/validators'
+import { usePatients, usePatient } from '../hooks/usePatients'
 import type { PatientInput, Sex } from '../types'
 
 const EMPTY_FORM: PatientInput = {
@@ -46,15 +47,99 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+/** Wrapper so IMaskInput matches the same visual style as our Input component */
+function MaskedInput({
+  label,
+  mask,
+  value,
+  onAccept,
+  placeholder,
+  required,
+}: {
+  label: string
+  mask: string
+  value: string
+  onAccept: (val: string) => void
+  placeholder?: string
+  required?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-sm font-medium text-gray-700">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <IMaskInput
+        mask={mask}
+        value={value}
+        onAccept={(val: string) => onAccept(val)}
+        placeholder={placeholder}
+        className="border border-gray-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+      />
+    </div>
+  )
+}
+
 export default function CadastroPage() {
   const navigate = useNavigate()
-  const { createPatient } = usePatients()
+  const { id } = useParams<{ id: string }>()
+  const isEditMode = Boolean(id)
+
+  const { createPatient, updatePatient } = usePatients()
+  const { patient, loading: loadingPatient } = usePatient(id ?? '')
+
   const [form, setForm] = useState<PatientInput>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cepLoading, setCepLoading] = useState(false)
+
+  // Populate form when editing an existing patient
+  useEffect(() => {
+    if (isEditMode && patient) {
+      setForm({
+        name:                 patient.name,
+        cpf:                  patient.cpf,
+        rg:                   patient.rg,
+        birthDate:            patient.birthDate,
+        sex:                  patient.sex,
+        phone:                patient.phone,
+        email:                patient.email,
+        addressStreet:        patient.addressStreet,
+        addressNumber:        patient.addressNumber,
+        addressComplement:    patient.addressComplement,
+        addressNeighborhood:  patient.addressNeighborhood,
+        addressCity:          patient.addressCity,
+        addressState:         patient.addressState,
+        addressZip:           patient.addressZip,
+        notes:                patient.notes,
+        customFields:         patient.customFields ?? {},
+      })
+    }
+  }, [isEditMode, patient])
 
   const set = (field: keyof PatientInput, value: unknown) =>
     setForm(prev => ({ ...prev, [field]: value || null }))
+
+  const handleCepLookup = useCallback(async (rawCep: string) => {
+    const digits = rawCep.replace(/\D/g, '')
+    set('addressZip', rawCep)
+    if (digits.length !== 8) return
+    setCepLoading(true)
+    try {
+      const result = await cep(digits)
+      setForm(prev => ({
+        ...prev,
+        addressStreet:       result.street       || prev.addressStreet,
+        addressNeighborhood: result.neighborhood || prev.addressNeighborhood,
+        addressCity:         result.city         || prev.addressCity,
+        addressState:        result.state        || prev.addressState,
+      }))
+    } catch {
+      // silently ignore — user can fill manually
+    } finally {
+      setCepLoading(false)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,12 +147,25 @@ export default function CadastroPage() {
     setSaving(true)
     setError(null)
     try {
-      const patient = await createPatient(form)
-      navigate(`/pacientes/${patient.id}`)
+      if (isEditMode && id) {
+        await updatePatient(id, form)
+        navigate(`/pacientes/${id}`)
+      } else {
+        const newPatient = await createPatient(form)
+        navigate(`/pacientes/${newPatient.id}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar paciente.')
       setSaving(false)
     }
+  }
+
+  if (isEditMode && loadingPatient) {
+    return (
+      <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+        Carregando...
+      </div>
+    )
   }
 
   return (
@@ -75,14 +173,14 @@ export default function CadastroPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
         <button
-          onClick={() => navigate('/pacientes')}
+          onClick={() => navigate(isEditMode && id ? `/pacientes/${id}` : '/pacientes')}
           className="text-gray-400 hover:text-gray-600 transition"
         >
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-xl font-semibold text-gray-800">Novo Paciente</h1>
-          <p className="text-sm text-gray-400">Preencha os dados do cadastro</p>
+          <h1 className="text-xl font-semibold text-gray-800">{isEditMode ? 'Editar Paciente' : 'Novo Paciente'}</h1>
+          <p className="text-sm text-gray-400">{isEditMode ? 'Atualize os dados do cadastro' : 'Preencha os dados do cadastro'}</p>
         </div>
       </div>
 
@@ -115,12 +213,12 @@ export default function CadastroPage() {
               { value: 'O', label: 'Outro' },
             ]}
           />
-          <Input
+          <MaskedInput
             label="CPF"
+            mask="000.000.000-00"
             value={form.cpf ?? ''}
-            onChange={e => set('cpf', formatCPF(e.target.value))}
+            onAccept={val => set('cpf', val)}
             placeholder="000.000.000-00"
-            maxLength={14}
           />
           <Input
             label="RG"
@@ -132,12 +230,12 @@ export default function CadastroPage() {
 
         {/* Contato */}
         <Section title="Contato">
-          <Input
+          <MaskedInput
             label="Telefone / WhatsApp"
+            mask="{(}00{)} 00000-0000"
             value={form.phone ?? ''}
-            onChange={e => set('phone', formatPhone(e.target.value))}
+            onAccept={val => set('phone', val)}
             placeholder="(11) 99999-9999"
-            maxLength={16}
           />
           <Input
             label="E-mail"
@@ -150,13 +248,21 @@ export default function CadastroPage() {
 
         {/* Endereço */}
         <Section title="Endereço">
-          <Input
-            label="CEP"
-            value={form.addressZip ?? ''}
-            onChange={e => set('addressZip', e.target.value)}
-            placeholder="00000-000"
-            maxLength={9}
-          />
+          <div className="relative">
+            <MaskedInput
+              label="CEP"
+              mask="00000-000"
+              value={form.addressZip ?? ''}
+              onAccept={handleCepLookup}
+              placeholder="00000-000"
+            />
+            {cepLoading && (
+              <SpinnerGap
+                size={14}
+                className="absolute right-3 top-9 text-blue-500 animate-spin"
+              />
+            )}
+          </div>
           <div className="lg:col-span-2">
             <Input
               label="Logradouro"
@@ -220,11 +326,11 @@ export default function CadastroPage() {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
           >
             <FloppyDisk size={16} />
-            {saving ? 'Salvando...' : 'Salvar paciente'}
+            {saving ? 'Salvando...' : isEditMode ? 'Salvar alterações' : 'Salvar paciente'}
           </button>
           <button
             type="button"
-            onClick={() => navigate('/pacientes')}
+            onClick={() => navigate(isEditMode && id ? `/pacientes/${id}` : '/pacientes')}
             className="px-5 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"
           >
             Cancelar

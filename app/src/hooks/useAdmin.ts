@@ -108,3 +108,77 @@ export function useUpsertProfile() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'profiles'] }),
   })
 }
+
+// ─── Admin overview — aggregate stats across ALL clinics ──────────────────────
+export interface ClinicStats {
+  clinicId: string
+  clinicName: string
+  patients: number
+  professionals: number
+  appointmentsThisMonth: number
+  appointmentsTotal: number
+}
+
+export interface AdminOverview {
+  totalClinics: number
+  totalUsers: number
+  totalPatients: number
+  totalAppointments: number
+  perClinic: ClinicStats[]
+}
+
+export function useAdminOverview() {
+  return useQuery<AdminOverview>({
+    queryKey: ['admin', 'overview'],
+    queryFn: async () => {
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+
+      const [
+        { data: clinics,       error: e1 },
+        { count: totalUsers,   error: e2 },
+        { count: totalPatients, error: e3 },
+        { count: totalAppts,   error: e4 },
+        { data: patientsPC,    error: e5 },
+        { data: profsPC,       error: e6 },
+        { data: apptsMonth,    error: e7 },
+        { data: apptsTotal,    error: e8 },
+      ] = await Promise.all([
+        supabase.from('clinics').select('id, name').order('name'),
+        supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('patients').select('*', { count: 'exact', head: true }),
+        supabase.from('appointments').select('*', { count: 'exact', head: true }),
+        supabase.from('patients').select('clinic_id'),
+        supabase.from('professionals').select('clinic_id').eq('active', true),
+        supabase.from('appointments').select('clinic_id').gte('starts_at', monthStart).lte('starts_at', monthEnd),
+        supabase.from('appointments').select('clinic_id'),
+      ])
+
+      for (const err of [e1, e2, e3, e4, e5, e6, e7, e8]) {
+        if (err) throw err
+      }
+
+      // Count per clinic
+      const count = (rows: { clinic_id: string }[] | null, id: string) =>
+        (rows ?? []).filter(r => r.clinic_id === id).length
+
+      const perClinic: ClinicStats[] = (clinics ?? []).map(c => ({
+        clinicId:             c.id as string,
+        clinicName:           c.name as string,
+        patients:             count(patientsPC as { clinic_id: string }[], c.id as string),
+        professionals:        count(profsPC    as { clinic_id: string }[], c.id as string),
+        appointmentsThisMonth: count(apptsMonth as { clinic_id: string }[], c.id as string),
+        appointmentsTotal:    count(apptsTotal  as { clinic_id: string }[], c.id as string),
+      }))
+
+      return {
+        totalClinics:      (clinics ?? []).length,
+        totalUsers:        totalUsers ?? 0,
+        totalPatients:     totalPatients ?? 0,
+        totalAppointments: totalAppts ?? 0,
+        perClinic,
+      }
+    },
+  })
+}

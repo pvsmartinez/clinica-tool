@@ -160,6 +160,7 @@ export interface UserProfile {
 // What each role is allowed to do
 export const ROLE_PERMISSIONS = {
   admin: {
+    canViewPatients:       true,
     canManagePatients:     true,
     canManageAgenda:       true,
     canManageProfessionals: true,
@@ -167,6 +168,7 @@ export const ROLE_PERMISSIONS = {
     canManageSettings:     true,
   },
   receptionist: {
+    canViewPatients:       true,
     canManagePatients:     true,
     canManageAgenda:       true,
     canManageProfessionals: false,
@@ -174,6 +176,7 @@ export const ROLE_PERMISSIONS = {
     canManageSettings:     false,
   },
   professional: {
+    canViewPatients:       true,
     canManagePatients:     false,
     canManageAgenda:       true,
     canManageProfessionals: false,
@@ -181,6 +184,7 @@ export const ROLE_PERMISSIONS = {
     canManageSettings:     false,
   },
   patient: {
+    canViewPatients:       false,
     canManagePatients:     false,
     canManageAgenda:       false,
     canManageProfessionals: false,
@@ -188,6 +192,19 @@ export const ROLE_PERMISSIONS = {
     canManageSettings:     false,
   },
 } satisfies Record<UserRole, Record<string, boolean>>
+
+// ─── Clinic Invite ────────────────────────────────────────────────────────────
+export interface ClinicInvite {
+  id: string
+  clinicId: string
+  clinicName?: string   // joined from clinics table
+  email: string
+  role: UserRole
+  name: string | null
+  invitedBy: string | null
+  usedAt: string | null
+  createdAt: string
+}
 
 // ─── Database placeholder (replaced by supabase gen types) ───────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

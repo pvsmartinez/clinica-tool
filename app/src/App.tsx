@@ -14,9 +14,13 @@ import AdminPage from './pages/AdminPage'
 import MyAppointmentsPage from './pages/MyAppointmentsPage'
 import AppLayout from './components/layout/AppLayout'
 import PatientPortalLayout from './components/layout/PatientPortalLayout'
+import OnboardingPage from './pages/OnboardingPage'
+import FinanceiroPage from './pages/FinanceiroPage'
+import RelatoriosPage from './pages/RelatoriosPage'
+import MeuPerfilPage from './pages/MeuPerfilPage'
 
 function App() {
-  const { session, role, isSuperAdmin, loading } = useAuthContext()
+  const { session, profile, role, isSuperAdmin, loading } = useAuthContext()
 
   if (loading) {
     return (
@@ -34,6 +38,11 @@ function App() {
     )
   }
 
+  // Signed-in but no profile yet (e.g. first OAuth login) — run onboarding
+  if (!profile) {
+    return <OnboardingPage />
+  }
+
   // Patient role gets a lightweight portal layout
   if (role === 'patient') {
     return (
@@ -41,6 +50,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/minhas-consultas" replace />} />
           <Route path="/minhas-consultas" element={<MyAppointmentsPage />} />
+          <Route path="/meu-perfil" element={<MeuPerfilPage />} />
           <Route path="/acesso-negado" element={<AccessDeniedPage />} />
           <Route path="*" element={<Navigate to="/minhas-consultas" replace />} />
         </Routes>
@@ -87,6 +97,22 @@ function App() {
           }
         />
         <Route path="/agenda" element={<AppointmentsPage />} />
+        <Route
+          path="/financeiro"
+          element={
+            <RequireAuth permission="canViewFinancial">
+              <FinanceiroPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/relatorios"
+          element={
+            <RequireAuth permission="canViewFinancial">
+              <RelatoriosPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/profissionais"
           element={

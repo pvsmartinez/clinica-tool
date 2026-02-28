@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -7,6 +7,7 @@ import { X } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import Input from '../ui/Input'
 import { useProfessionals } from '../../hooks/useProfessionals'
+import { useCreateInvite } from '../../hooks/useInvites'
 import type { Professional } from '../../types'
 
 const schema = z.object({
@@ -27,7 +28,9 @@ interface Props {
 
 export default function ProfessionalModal({ open, onClose, professional }: Props) {
   const { create, update } = useProfessionals()
+  const createInvite = useCreateInvite()
   const isEditing = !!professional
+  const [createAccess, setCreateAccess] = useState(false)
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -36,6 +39,7 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
 
   useEffect(() => {
     if (open) {
+      setCreateAccess(false)
       reset(professional ? {
         name: professional.name,
         specialty: professional.specialty ?? '',
@@ -62,7 +66,23 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
         toast.success('Profissional atualizado')
       } else {
         await create.mutateAsync(payload)
-        toast.success('Profissional cadastrado')
+        // Optionally send a system-access invite when email is provided
+        if (createAccess && values.email) {
+          try {
+            await createInvite.mutateAsync({
+              email: values.email,
+              role: 'professional',
+              name: values.name,
+            })
+            toast.success('Profissional cadastrado e convite enviado')
+          } catch {
+            // Don't fail the whole save if only the invite fails
+            toast.success('Profissional cadastrado')
+            toast.warning('Não foi possível criar o convite de acesso — tente novamente na lista.')
+          }
+        } else {
+          toast.success('Profissional cadastrado')
+        }
       }
       onClose()
     } catch {
@@ -96,6 +116,21 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
               <input type="checkbox" className="rounded" {...register('active')} />
               Profissional ativo
             </label>
+
+            {/* Invite to system access — only shown on creation when email is provided */}
+            {!isEditing && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none
+                                rounded-lg border border-dashed border-blue-200 bg-blue-50/50 px-3 py-2">
+                <input
+                  type="checkbox"
+                  className="rounded accent-blue-600"
+                  checked={createAccess}
+                  onChange={e => setCreateAccess(e.target.checked)}
+                />
+                <span className="text-blue-700 font-medium">Criar acesso ao sistema</span>
+                <span className="text-blue-500 text-xs ml-auto">envia convite por e-mail</span>
+              </label>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose}

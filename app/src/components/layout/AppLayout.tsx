@@ -8,15 +8,19 @@ import {
   UsersFour,
   Gear,
   Shield,
+  CurrencyCircleDollar,
+  ChartLineUp,
 } from '@phosphor-icons/react'
 import { useAuthContext } from '../../contexts/AuthContext'
 
 const navItems = [
-  { to: '/dashboard', icon: ChartBar, label: 'Dashboard', permission: null },
-  { to: '/agenda', icon: CalendarBlank, label: 'Agenda', permission: null },
-  { to: '/pacientes', icon: Users, label: 'Pacientes', permission: 'canViewPatients' as const },
-  { to: '/profissionais', icon: UsersFour, label: 'Profissionais', permission: 'canManageProfessionals' as const },
-  { to: '/configuracoes', icon: Gear, label: 'Configurações', permission: 'canManageSettings' as const },
+  { to: '/dashboard',     icon: ChartBar,             label: 'Dashboard',      permission: null },
+  { to: '/agenda',        icon: CalendarBlank,         label: 'Agenda',         permission: null },
+  { to: '/pacientes',     icon: Users,                 label: 'Pacientes',      permission: 'canViewPatients' as const },
+  { to: '/profissionais', icon: UsersFour,             label: 'Profissionais',  permission: 'canManageProfessionals' as const },
+  { to: '/financeiro',    icon: CurrencyCircleDollar,  label: 'Financeiro',     permission: 'canViewFinancial' as const },
+  { to: '/relatorios',    icon: ChartLineUp,           label: 'Relatórios',     permission: 'canViewFinancial' as const },
+  { to: '/configuracoes', icon: Gear,                  label: 'Configurações',  permission: 'canManageSettings' as const },
 ]
 
 interface AppLayoutProps {

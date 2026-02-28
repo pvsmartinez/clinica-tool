@@ -1,5 +1,5 @@
-import { Navigate } from 'react-router-dom'
-import { Stethoscope, SignOut } from '@phosphor-icons/react'
+import { NavLink, Navigate } from 'react-router-dom'
+import { Stethoscope, SignOut, CalendarBlank, User } from '@phosphor-icons/react'
 import { useAuthContext } from '../../contexts/AuthContext'
 
 interface PatientPortalLayoutProps {
@@ -25,7 +25,27 @@ export default function PatientPortalLayout({ children }: PatientPortalLayoutPro
           <Stethoscope size={20} className="text-blue-600" />
           <span className="font-semibold text-gray-800 text-sm">Clínica Tool</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
+          <NavLink
+            to="/minhas-consultas"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 text-xs transition ${
+                isActive ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'
+              }`
+            }
+          >
+            <CalendarBlank size={14} /> Consultas
+          </NavLink>
+          <NavLink
+            to="/meu-perfil"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 text-xs transition ${
+                isActive ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'
+              }`
+            }
+          >
+            <User size={14} /> Meu Perfil
+          </NavLink>
           <span className="text-sm text-gray-500">{profile?.name}</span>
           <button
             onClick={signOut}
