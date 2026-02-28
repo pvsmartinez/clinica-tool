@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Stethoscope } from '@phosphor-icons/react'
+import { Link } from 'react-router-dom'
 import { useAuthContext } from '../contexts/AuthContext'
 
 // ─── Social icons (inline SVG — no extra deps) ───────────────────────────────
@@ -11,11 +12,7 @@ const GoogleIcon = () => (
     <path fill="#34A853" d="M24 46.5c5.5 0 10.1-1.8 13.5-4.9l-7-5.4c-1.9 1.3-4.3 2-6.5 2-6.3 0-11.6-4.6-13.6-10.8l-6.7 5.2C7 40.7 14.8 46.5 24 46.5z" />
   </svg>
 )
-const FacebookIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2" aria-hidden="true">
-    <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
-  </svg>
-)
+
 const AppleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 814 1000" fill="currentColor" aria-hidden="true">
     <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 376.5 0 246.5 0 122.7c0-71.2 26.1-136.6 73.1-183.6C120.1-14.2 186.4-42 256-42c66.5 0 122.7 40.1 164 40.1 39.2 0 101.2-42.4 180.3-42.4 28 0 106.9 2.6 164 76zm-87.5-221.8c35.5-41.5 61.6-100.5 61.6-159.3 0-7.8-.7-15.9-1.9-22.7-57.8 2.6-128.5 37.6-171.7 86.5-32.1 36.2-62.5 96.1-62.5 155.9 0 8.4 1.3 16.9 1.9 19.5 3.2.6 8.4 1.3 13.6 1.3 51.8 0 116.1-33.7 158.9-81.2z" />
@@ -25,7 +22,7 @@ const AppleIcon = () => (
 type View = 'login' | 'register' | 'forgot'
 
 export default function LoginPage() {
-  const { signInWithEmail, signInWithGoogle, signInWithFacebook, signInWithApple } = useAuthContext()
+  const { signInWithEmail, signInWithGoogle, signInWithApple } = useAuthContext()
   const [view, setView] = useState<View>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -72,7 +69,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="flex items-center gap-2 mb-6">
           <Stethoscope size={24} className="text-blue-600" />
-          <span className="text-lg font-semibold text-gray-800">Clínica Tool</span>
+          <span className="text-lg font-semibold text-gray-800">Consultin</span>
         </div>
 
         {/* ── LOGIN ─────────────────────────────────────────── */}
@@ -83,7 +80,6 @@ export default function LoginPage() {
 
             <div className="flex flex-col gap-2 mb-5">
               <SocialButton onClick={signInWithGoogle} icon={<GoogleIcon />} label="Continuar com Google" />
-              <SocialButton onClick={signInWithFacebook} icon={<FacebookIcon />} label="Continuar com Facebook" />
               <SocialButton onClick={signInWithApple} icon={<AppleIcon />} label="Continuar com Apple" />
             </div>
 
@@ -126,6 +122,12 @@ export default function LoginPage() {
               <button onClick={() => { setView('register'); setError(null) }} className="text-blue-600 hover:underline">
                 Cadastre-se
               </button>
+            </p>
+            <p className="text-center text-xs text-gray-400 mt-2">
+              É uma clínica?{' '}
+              <Link to="/cadastro-clinica" className="text-blue-600 hover:underline font-medium">
+                Solicite seu acesso
+              </Link>
             </p>
           </>
         )}

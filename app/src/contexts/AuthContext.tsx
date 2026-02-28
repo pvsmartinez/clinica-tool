@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../services/supabase'
+import { primaryRole, mergedPermissions } from '../types'
 import type { UserProfile, UserRole } from '../types'
 
 interface AuthContextValue {
@@ -9,9 +10,10 @@ interface AuthContextValue {
   role: UserRole | null
   isSuperAdmin: boolean
   loading: boolean
+  recoveryMode: boolean
+  clearRecoveryMode: () => void
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>
   signInWithGoogle: () => Promise<void>
-  signInWithFacebook: () => Promise<void>
   signInWithApple: () => Promise<void>
   signOut: () => Promise<void>
   hasPermission: (key: string) => boolean
@@ -19,40 +21,105 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+const PROFILE_CACHE_KEY = 'consultin_profile_cache'
+
+function getCachedProfile(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    return raw ? (JSON.parse(raw) as UserProfile) : null
+  } catch { return null }
+}
+
+function setCachedProfile(p: UserProfile | null) {
+  try {
+    if (p) localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p))
+    else localStorage.removeItem(PROFILE_CACHE_KEY)
+  } catch { /* ignore */ }
+}
+
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data } = await supabase
+  const timeout = new Promise<null>((_, reject) =>
+    setTimeout(() => reject(new Error('fetchProfile timeout')), 4000)
+  )
+  const query = supabase
     .from('user_profiles')
-    .select('id, clinic_id, role, name, is_super_admin')
+    .select('id, clinic_id, roles, name, is_super_admin')
     .eq('id', userId)
     .single()
-  if (!data) return null
-  return {
-    id: data.id as string,
-    clinicId: data.clinic_id as string | null,
-    role: data.role as UserRole,
-    name: data.name as string,
-    isSuperAdmin: (data.is_super_admin as boolean) ?? false,
-  }
+    .then(({ data }) => {
+      if (!data) return null
+      return {
+        id: data.id as string,
+        clinicId: data.clinic_id as string | null,
+        roles: (data.roles as UserRole[]) ?? [],
+        name: data.name as string,
+        isSuperAdmin: (data.is_super_admin as boolean) ?? false,
+      } as UserProfile
+    })
+  return Promise.race([query, timeout])
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
+  // Seed profile from cache so UI renders instantly on reload
+  const [profile, setProfile] = useState<UserProfile | null>(getCachedProfile)
   const [loading, setLoading] = useState(true)
+  // True when Supabase fires PASSWORD_RECOVERY — forces NovaSenhaPage regardless of route
+  const [recoveryMode, setRecoveryMode] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session)
-      if (session) setProfile(await fetchProfile(session.user.id))
+    // Safety net: if onAuthStateChange never fires (e.g. stale refresh token hang),
+    // force-clear auth state and bail to login after 5s.
+    // NOTE: do NOT await signOut here — it can hang on stale tokens and keep loading=true forever.
+    const timeout = setTimeout(() => {
+      console.warn('Auth timed out — clearing session')
+      supabase.auth.signOut().catch(() => { /* ignore */ })
+      setSession(null)
+      setProfile(null)
+      setCachedProfile(null)
       setLoading(false)
-    })
+    }, 5000)
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Modern pattern: onAuthStateChange fires INITIAL_SESSION synchronously,
+    // so we don't need a separate getSession() call (which can deadlock in newer versions).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      clearTimeout(timeout)
       setSession(session)
-      setProfile(session ? await fetchProfile(session.user.id) : null)
+
+      // Intercept password-reset flow — show change-password screen immediately
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMode(true)
+        setLoading(false)
+        return
+      }
+
+      if (!session) {
+        setProfile(null)
+        setCachedProfile(null)
+        setLoading(false)
+        return
+      }
+
+      // Use cached profile to render instantly, then refresh from DB in background
+      const cached = getCachedProfile()
+      if (cached && cached.id === session.user.id) {
+        setProfile(cached)
+        setLoading(false)
+      }
+
+      try {
+        const p = await fetchProfile(session.user.id)
+        setProfile(p)
+        setCachedProfile(p)
+      } catch (e) {
+        console.error('fetchProfile error:', e)
+        if (!cached) { setProfile(null); setCachedProfile(null) }
+      } finally {
+        setLoading(false) // no-op if already false
+      }
     })
 
-    return () => subscription.unsubscribe()
+    return () => { clearTimeout(timeout); subscription.unsubscribe() }
   }, [])
 
   const signInWithEmail = async (email: string, password: string) => {
@@ -63,30 +130,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = () =>
     supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } }).then(() => undefined)
 
-  const signInWithFacebook = () =>
-    supabase.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: window.location.origin } }).then(() => undefined)
-
   const signInWithApple = () =>
     supabase.auth.signInWithOAuth({ provider: 'apple', options: { redirectTo: window.location.origin } }).then(() => undefined)
 
   const signOut = () => supabase.auth.signOut().then(() => undefined)
+  const clearRecoveryMode = () => setRecoveryMode(false)
 
   const hasPermission = (key: string): boolean => {
     if (!profile) return false
-    const map: Record<string, Record<string, boolean>> = {
-      admin:        { canViewPatients: true,  canManagePatients: true,  canManageAgenda: true,  canManageProfessionals: true,  canViewFinancial: true,  canManageSettings: true  },
-      receptionist: { canViewPatients: true,  canManagePatients: true,  canManageAgenda: true,  canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-      professional: { canViewPatients: true,  canManagePatients: false, canManageAgenda: true,  canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-      patient:      { canViewPatients: false, canManagePatients: false, canManageAgenda: false, canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-    }
-    return map[profile.role]?.[key] ?? false
+    return mergedPermissions(profile.roles)[key] ?? false
   }
 
   return (
     <AuthContext.Provider value={{
-      session, profile, role: profile?.role ?? null, loading,
+      session, profile, role: profile ? primaryRole(profile.roles) : null, loading,
       isSuperAdmin: profile?.isSuperAdmin ?? false,
-      signInWithEmail, signInWithGoogle, signInWithFacebook, signInWithApple, signOut, hasPermission,
+      recoveryMode, clearRecoveryMode,
+      signInWithEmail, signInWithGoogle, signInWithApple, signOut, hasPermission,
     }}>
       {children}
     </AuthContext.Provider>
