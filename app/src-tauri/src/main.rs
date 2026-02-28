@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    clinica_tool_lib::run()
+    consultin_lib::run()
 }

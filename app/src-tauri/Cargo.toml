@@ -1,12 +1,12 @@
 [package]
-name = "clinica-tool"
+name = "consultin"
 version = "0.1.0"
-description = "Clínica Tool — plataforma de gestão para pequenas clínicas brasileiras"
+description = "Consultin - plataforma de gestao para pequenas clinicas brasileiras"
 authors = ["pvsmartinez"]
 edition = "2021"
 
 [lib]
-name = "clinica_tool_lib"
+name = "consultin_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

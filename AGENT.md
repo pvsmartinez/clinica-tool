@@ -1,14 +1,14 @@
-# AGENT.md — Clínica Tool
+# AGENT.md - Consultin
 
 > **For GitHub Copilot and AI agents working in this repo.**
 > Read this file fully before making code changes.
 
 ## Project
 
-**Clínica Tool** — SaaS platform for small Brazilian clinics (dental, medical, aesthetic, physio, etc.)
+**Consultin** - SaaS platform for small Brazilian clinics (dental, medical, aesthetic, physio, etc.)
 
 **Owner:** Pedro Martinez (pvsmartinez@gmail.com)
-**Repo:** https://github.com/pvsmartinez/clinica-tool
+**Repo:** https://github.com/pvsmartinez/consultin
 **Started:** February 2026
 
 ---
@@ -55,8 +55,8 @@ A multi-tenant clinic management system covering:
 ## Project Structure
 
 ```
-clinica-tool/
-├── app/                          # Tauri v2 + React app
+consultin/
+|-- app/                          # Tauri v2 + React app
 │   ├── src/
 │   │   ├── components/
 │   │   │   └── layout/
