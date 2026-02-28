@@ -8,6 +8,8 @@ import PatientsPage from './pages/PatientsPage'
 import CadastroPage from './pages/CadastroPage'
 import PatientDetailPage from './pages/PatientDetailPage'
 import AppointmentsPage from './pages/AppointmentsPage'
+import ProfessionalsPage from './pages/ProfessionalsPage'
+import SettingsPage from './pages/SettingsPage'
 import MyAppointmentsPage from './pages/MyAppointmentsPage'
 import AppLayout from './components/layout/AppLayout'
 import PatientPortalLayout from './components/layout/PatientPortalLayout'
@@ -84,6 +86,22 @@ function App() {
           }
         />
         <Route path="/agenda" element={<AppointmentsPage />} />
+        <Route
+          path="/profissionais"
+          element={
+            <RequireAuth permission="canManageProfessionals">
+              <ProfessionalsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/configuracoes"
+          element={
+            <RequireAuth permission="canManageSettings">
+              <SettingsPage />
+            </RequireAuth>
+          }
+        />
         <Route path="/acesso-negado" element={<AccessDeniedPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
