@@ -7,15 +7,16 @@ import {
   SignOut,
   UsersFour,
   Gear,
+  Shield,
 } from '@phosphor-icons/react'
 import { useAuthContext } from '../../contexts/AuthContext'
 
 const navItems = [
-  { to: '/dashboard',     icon: ChartBar,    label: 'Dashboard',     permission: null },
-  { to: '/agenda',        icon: CalendarBlank, label: 'Agenda',       permission: null },
-  { to: '/pacientes',     icon: Users,       label: 'Pacientes',     permission: 'canViewPatients' as const },
-  { to: '/profissionais', icon: UsersFour,   label: 'Profissionais', permission: 'canManageProfessionals' as const },
-  { to: '/configuracoes', icon: Gear,        label: 'Configurações', permission: 'canManageSettings' as const },
+  { to: '/dashboard', icon: ChartBar, label: 'Dashboard', permission: null },
+  { to: '/agenda', icon: CalendarBlank, label: 'Agenda', permission: null },
+  { to: '/pacientes', icon: Users, label: 'Pacientes', permission: 'canViewPatients' as const },
+  { to: '/profissionais', icon: UsersFour, label: 'Profissionais', permission: 'canManageProfessionals' as const },
+  { to: '/configuracoes', icon: Gear, label: 'Configurações', permission: 'canManageSettings' as const },
 ]
 
 interface AppLayoutProps {
@@ -23,7 +24,7 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { signOut, hasPermission, profile } = useAuthContext()
+  const { signOut, hasPermission, profile, isSuperAdmin } = useAuthContext()
 
   const visibleNav = navItems.filter(item =>
     item.permission == null || hasPermission(item.permission)
@@ -60,6 +61,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
         {/* User + sign out */}
         <div className="p-3 border-t border-gray-200 space-y-1">
+          {isSuperAdmin && (
+            <NavLink to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-amber-50 text-amber-700 font-medium' : 'text-amber-600 hover:bg-amber-50'}`
+              }>
+              <Shield size={18} />
+              Admin
+            </NavLink>
+          )}
           {profile && (
             <p className="px-3 py-1 text-xs text-gray-400 truncate">{profile.name}</p>
           )}

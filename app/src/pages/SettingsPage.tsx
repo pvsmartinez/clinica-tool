@@ -11,20 +11,20 @@ import type { Clinic, CustomFieldDef, CustomFieldType, WorkingHours } from '../t
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 type Tab = 'dados' | 'agenda' | 'campos'
 const TABS: { id: Tab; label: string; icon: typeof Gear }[] = [
-  { id: 'dados',  label: 'Dados da clínica', icon: Gear },
-  { id: 'agenda', label: 'Agenda',            icon: CalendarBlank },
+  { id: 'dados', label: 'Dados da clínica', icon: Gear },
+  { id: 'agenda', label: 'Agenda', icon: CalendarBlank },
   { id: 'campos', label: 'Campos personalizados', icon: Sliders },
 ]
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 const dadosSchema = z.object({
-  name:    z.string().min(2, 'Nome obrigatório'),
-  cnpj:    z.string().optional(),
-  phone:   z.string().optional(),
-  email:   z.string().email('E-mail inválido').optional().or(z.literal('')),
+  name: z.string().min(2, 'Nome obrigatório'),
+  cnpj: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
   address: z.string().optional(),
-  city:    z.string().optional(),
-  state:   z.string().max(2).optional(),
+  city: z.string().optional(),
+  state: z.string().max(2).optional(),
 })
 type DadosForm = z.infer<typeof dadosSchema>
 
@@ -40,10 +40,10 @@ const WEEKDAYS = [
 
 const SLOT_DURATIONS = [15, 20, 30, 45, 60]
 const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
-  { value: 'text',    label: 'Texto' },
-  { value: 'number',  label: 'Número' },
-  { value: 'date',    label: 'Data' },
-  { value: 'select',  label: 'Lista de opções' },
+  { value: 'text', label: 'Texto' },
+  { value: 'number', label: 'Número' },
+  { value: 'date', label: 'Data' },
+  { value: 'select', label: 'Lista de opções' },
   { value: 'boolean', label: 'Sim / Não' },
 ]
 
@@ -70,7 +70,7 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {tab === 'dados'  && <DadosTab clinic={clinic} />}
+      {tab === 'dados' && <DadosTab clinic={clinic} />}
       {tab === 'agenda' && <AgendaTab clinic={clinic} />}
       {tab === 'campos' && <CamposTab clinic={clinic} />}
     </div>
@@ -86,26 +86,26 @@ function DadosTab({ clinic }: { clinic: Clinic }) {
 
   useEffect(() => {
     reset({
-      name:    clinic.name,
-      cnpj:    clinic.cnpj ?? '',
-      phone:   clinic.phone ?? '',
-      email:   clinic.email ?? '',
+      name: clinic.name,
+      cnpj: clinic.cnpj ?? '',
+      phone: clinic.phone ?? '',
+      email: clinic.email ?? '',
       address: clinic.address ?? '',
-      city:    clinic.city ?? '',
-      state:   clinic.state ?? '',
+      city: clinic.city ?? '',
+      state: clinic.state ?? '',
     })
   }, [clinic, reset])
 
   async function onSubmit(values: DadosForm) {
     try {
       await update.mutateAsync({
-        name:    values.name,
-        cnpj:    values.cnpj || null,
-        phone:   values.phone || null,
-        email:   values.email || null,
+        name: values.name,
+        cnpj: values.cnpj || null,
+        phone: values.phone || null,
+        email: values.email || null,
         address: values.address || null,
-        city:    values.city || null,
-        state:   values.state || null,
+        city: values.city || null,
+        state: values.state || null,
       })
       toast.success('Dados salvos')
     } catch {

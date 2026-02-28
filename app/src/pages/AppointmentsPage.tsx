@@ -13,11 +13,11 @@ import AppointmentModal from '../components/appointments/AppointmentModal'
 import type { Appointment } from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled:  '#3b82f6',
-  confirmed:  '#22c55e',
-  completed:  '#6b7280',
-  cancelled:  '#ef4444',
-  no_show:    '#f59e0b',
+  scheduled: '#3b82f6',
+  confirmed: '#22c55e',
+  completed: '#6b7280',
+  cancelled: '#ef4444',
+  no_show: '#f59e0b',
 }
 
 export default function AppointmentsPage() {
@@ -25,7 +25,7 @@ export default function AppointmentsPage() {
   const today = new Date()
   const [range, setRange] = useState({
     start: startOfWeek(today).toISOString(),
-    end:   endOfWeek(today).toISOString(),
+    end: endOfWeek(today).toISOString(),
   })
 
   const { data: appointments = [], isLoading } = useAppointmentsQuery(range.start, range.end)
@@ -36,13 +36,13 @@ export default function AppointmentsPage() {
   const [initialSlot, setInitialSlot] = useState<{ date: string; time: string } | null>(null)
 
   const events: EventInput[] = appointments.map(a => ({
-    id:              a.id,
-    title:           a.patient?.name ?? 'Paciente',
-    start:           a.startsAt,
-    end:             a.endsAt,
+    id: a.id,
+    title: a.patient?.name ?? 'Paciente',
+    start: a.startsAt,
+    end: a.endsAt,
     backgroundColor: STATUS_COLORS[a.status] ?? '#3b82f6',
-    borderColor:     STATUS_COLORS[a.status] ?? '#3b82f6',
-    extendedProps:   { appointment: a },
+    borderColor: STATUS_COLORS[a.status] ?? '#3b82f6',
+    extendedProps: { appointment: a },
   }))
 
   function handleDateSelect(arg: { start: Date; startStr: string; endStr: string; allDay: boolean }) {
@@ -60,12 +60,12 @@ export default function AppointmentsPage() {
   async function handleEventDrop(arg: { event: { id: string; startStr: string; endStr: string; start: Date | null; extendedProps: Record<string, unknown> }; revert: () => void }) {
     const appt = arg.event.extendedProps.appointment as Appointment
     const newStart = arg.event.start!
-    const diffMs   = new Date(appt.endsAt).getTime() - new Date(appt.startsAt).getTime()
+    const diffMs = new Date(appt.endsAt).getTime() - new Date(appt.startsAt).getTime()
     try {
       await update.mutateAsync({
         id: appt.id, patientId: appt.patientId, professionalId: appt.professionalId,
         startsAt: newStart.toISOString(),
-        endsAt:   new Date(newStart.getTime() + diffMs).toISOString(),
+        endsAt: new Date(newStart.getTime() + diffMs).toISOString(),
         status: appt.status, notes: appt.notes, chargeAmountCents: appt.chargeAmountCents,
       })
       toast.success('Consulta remarcada')

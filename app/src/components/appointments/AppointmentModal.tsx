@@ -19,14 +19,14 @@ import {
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 const schema = z.object({
-  patientId:      z.string().min(1, 'Selecione um paciente'),
+  patientId: z.string().min(1, 'Selecione um paciente'),
   professionalId: z.string().min(1, 'Selecione um profissional'),
-  date:           z.string().min(1, 'Data obrigatória'),
-  startTime:      z.string().min(1, 'Horário obrigatório'),
-  durationMin:    z.string(),
-  status:         z.string(),
-  notes:          z.string().optional(),
-  chargeAmount:   z.string().optional(),
+  date: z.string().min(1, 'Data obrigatória'),
+  startTime: z.string().min(1, 'Horário obrigatório'),
+  durationMin: z.string(),
+  status: z.string(),
+  notes: z.string().optional(),
+  chargeAmount: z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -70,30 +70,30 @@ export default function AppointmentModal({
 
     if (appointment) {
       const start = parseISO(appointment.startsAt)
-      const end   = parseISO(appointment.endsAt)
+      const end = parseISO(appointment.endsAt)
       const diffMin = Math.round((end.getTime() - start.getTime()) / 60000)
       reset({
-        patientId:      appointment.patientId,
+        patientId: appointment.patientId,
         professionalId: appointment.professionalId,
-        date:           format(start, 'yyyy-MM-dd'),
-        startTime:      format(start, 'HH:mm'),
-        durationMin:    String(DURATIONS.includes(diffMin) ? diffMin : 30),
-        status:         appointment.status,
-        notes:          appointment.notes ?? '',
-        chargeAmount:   appointment.chargeAmountCents != null
+        date: format(start, 'yyyy-MM-dd'),
+        startTime: format(start, 'HH:mm'),
+        durationMin: String(DURATIONS.includes(diffMin) ? diffMin : 30),
+        status: appointment.status,
+        notes: appointment.notes ?? '',
+        chargeAmount: appointment.chargeAmountCents != null
           ? (appointment.chargeAmountCents / 100).toFixed(2).replace('.', ',')
           : '',
       })
     } else {
       reset({
-        patientId:      '',
+        patientId: '',
         professionalId: initialProfessionalId ?? '',
-        date:           initialDate ?? format(new Date(), 'yyyy-MM-dd'),
-        startTime:      initialTime ?? '08:00',
-        durationMin:    '30',
-        status:         'scheduled',
-        notes:          '',
-        chargeAmount:   '',
+        date: initialDate ?? format(new Date(), 'yyyy-MM-dd'),
+        startTime: initialTime ?? '08:00',
+        durationMin: '30',
+        status: 'scheduled',
+        notes: '',
+        chargeAmount: '',
       })
     }
   }, [open, appointment, initialDate, initialTime, initialProfessionalId, reset])
@@ -101,18 +101,18 @@ export default function AppointmentModal({
   async function onSubmit(values: FormValues) {
     try {
       const startsAt = toUTC(values.date, values.startTime)
-      const endsAt   = addMinutes(new Date(startsAt), parseInt(values.durationMin)).toISOString()
+      const endsAt = addMinutes(new Date(startsAt), parseInt(values.durationMin)).toISOString()
       const chargeAmountCents = values.chargeAmount
         ? Math.round(parseFloat(values.chargeAmount.replace(',', '.')) * 100)
         : null
 
       const payload = {
-        patientId:      values.patientId,
+        patientId: values.patientId,
         professionalId: values.professionalId,
         startsAt,
         endsAt,
-        status:         values.status as AppointmentStatus,
-        notes:          values.notes || null,
+        status: values.status as AppointmentStatus,
+        notes: values.notes || null,
         chargeAmountCents,
       }
 

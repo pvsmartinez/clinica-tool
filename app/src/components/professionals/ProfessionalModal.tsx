@@ -10,12 +10,12 @@ import { useProfessionals } from '../../hooks/useProfessionals'
 import type { Professional } from '../../types'
 
 const schema = z.object({
-  name:      z.string().min(2, 'Nome obrigatório'),
+  name: z.string().min(2, 'Nome obrigatório'),
   specialty: z.string().optional(),
   councilId: z.string().optional(),
-  phone:     z.string().optional(),
-  email:     z.string().email('E-mail inválido').optional().or(z.literal('')),
-  active:    z.boolean(),
+  phone: z.string().optional(),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
+  active: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -37,12 +37,12 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
   useEffect(() => {
     if (open) {
       reset(professional ? {
-        name:      professional.name,
+        name: professional.name,
         specialty: professional.specialty ?? '',
         councilId: professional.councilId ?? '',
-        phone:     professional.phone ?? '',
-        email:     professional.email ?? '',
-        active:    professional.active,
+        phone: professional.phone ?? '',
+        email: professional.email ?? '',
+        active: professional.active,
       } : { name: '', specialty: '', councilId: '', phone: '', email: '', active: true })
     }
   }, [open, professional, reset])
@@ -50,12 +50,12 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
   async function onSubmit(values: FormValues) {
     try {
       const payload = {
-        name:      values.name,
+        name: values.name,
         specialty: values.specialty || null,
         councilId: values.councilId || null,
-        phone:     values.phone || null,
-        email:     values.email || null,
-        active:    values.active,
+        phone: values.phone || null,
+        email: values.email || null,
+        active: values.active,
       }
       if (isEditing) {
         await update.mutateAsync({ id: professional!.id, ...payload })

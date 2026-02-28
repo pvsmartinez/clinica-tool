@@ -151,9 +151,10 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
 
 export interface UserProfile {
   id: string
-  clinicId: string
+  clinicId: string | null  // null for super admins not yet assigned to a clinic
   role: UserRole
   name: string
+  isSuperAdmin: boolean
 }
 
 // What each role is allowed to do

@@ -7,6 +7,7 @@ interface AuthContextValue {
   session: Session | null
   profile: UserProfile | null
   role: UserRole | null
+  isSuperAdmin: boolean
   loading: boolean
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>
   signInWithGoogle: () => Promise<void>
@@ -21,15 +22,16 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
   const { data } = await supabase
     .from('user_profiles')
-    .select('id, clinic_id, role, name')
+    .select('id, clinic_id, role, name, is_super_admin')
     .eq('id', userId)
     .single()
   if (!data) return null
   return {
     id: data.id as string,
-    clinicId: data.clinic_id as string,
+    clinicId: data.clinic_id as string | null,
     role: data.role as UserRole,
     name: data.name as string,
+    isSuperAdmin: (data.is_super_admin as boolean) ?? false,
   }
 }
 
@@ -83,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, profile, role: profile?.role ?? null, loading,
+      isSuperAdmin: profile?.isSuperAdmin ?? false,
       signInWithEmail, signInWithGoogle, signInWithFacebook, signInWithApple, signOut, hasPermission,
     }}>
       {children}
