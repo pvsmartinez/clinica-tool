@@ -68,22 +68,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [recoveryMode, setRecoveryMode] = useState(false)
 
   useEffect(() => {
-    // Safety net: if onAuthStateChange never fires (e.g. stale refresh token hang),
-    // force-clear auth state and bail to login after 5s.
-    // NOTE: do NOT await signOut here — it can hang on stale tokens and keep loading=true forever.
+    let settled = false
+
+    const settle = () => {
+      settled = true
+      clearTimeout(timeout)
+    }
+
+    // Safety net: if auth never resolves (token refresh hang, network issue),
+    // clear state and show login after 3s. Do NOT await signOut — it can hang too.
     const timeout = setTimeout(() => {
+      if (settled) return
       console.warn('Auth timed out — clearing session')
       supabase.auth.signOut().catch(() => { /* ignore */ })
       setSession(null)
       setProfile(null)
       setCachedProfile(null)
       setLoading(false)
-    }, 5000)
+      settle()
+    }, 3000)
 
-    // Modern pattern: onAuthStateChange fires INITIAL_SESSION synchronously,
-    // so we don't need a separate getSession() call (which can deadlock in newer versions).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      clearTimeout(timeout)
+      settle()
       setSession(session)
 
       // Intercept password-reset flow — show change-password screen immediately
@@ -119,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => { clearTimeout(timeout); subscription.unsubscribe() }
+    return () => { settle(); subscription.unsubscribe() }
   }, [])
 
   const signInWithEmail = async (email: string, password: string) => {
