@@ -109,9 +109,8 @@ export default function AppointmentsPage() {
                 return (
                   <div key={dayStr} className={`py-3 text-center border-l border-gray-100 ${isToday ? 'bg-blue-50' : ''}`}>
                     <div className="text-xs text-gray-400">{WEEKDAYS[day.getDay()]}</div>
-                    <div className={`text-sm font-semibold mt-0.5 ${
-                      isToday ? 'text-blue-600' : 'text-gray-700'
-                    }`}>
+                    <div className={`text-sm font-semibold mt-0.5 ${isToday ? 'text-blue-600' : 'text-gray-700'
+                      }`}>
                       {day.getDate()}
                     </div>
                   </div>

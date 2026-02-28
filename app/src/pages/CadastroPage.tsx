@@ -28,9 +28,9 @@ const EMPTY_FORM: PatientInput = {
 }
 
 const BR_STATES = [
-  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
-  'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC',
-  'SP','SE','TO',
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+  'SP', 'SE', 'TO',
 ].map(s => ({ value: s, label: s }))
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

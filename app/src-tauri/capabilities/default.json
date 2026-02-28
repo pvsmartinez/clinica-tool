@@ -2,7 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2/capability",
   "identifier": "default",
   "description": "Default capability for Clínica Tool",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "dialog:default",

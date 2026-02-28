@@ -133,15 +133,60 @@ export interface AvailabilitySlot {
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
-export type UserRole = 'admin' | 'receptionist' | 'professional'
+
+/**
+ * admin        → clínica admin  — full access to all features
+ * receptionist → atendente      — agenda + cadastro, no financial settings
+ * professional → médico/dentista — own schedule + patient history
+ * patient      → paciente       — own appointments + own profile only
+ */
+export type UserRole = 'admin' | 'receptionist' | 'professional' | 'patient'
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  admin:         'Administrador',
+  receptionist:  'Atendente',
+  professional:  'Profissional',
+  patient:       'Paciente',
+}
 
 export interface UserProfile {
   id: string
   clinicId: string
   role: UserRole
   name: string
-  email: string
 }
+
+// What each role is allowed to do
+export const ROLE_PERMISSIONS = {
+  admin: {
+    canManagePatients:     true,
+    canManageAgenda:       true,
+    canManageProfessionals: true,
+    canViewFinancial:      true,
+    canManageSettings:     true,
+  },
+  receptionist: {
+    canManagePatients:     true,
+    canManageAgenda:       true,
+    canManageProfessionals: false,
+    canViewFinancial:      false,
+    canManageSettings:     false,
+  },
+  professional: {
+    canManagePatients:     false,
+    canManageAgenda:       true,
+    canManageProfessionals: false,
+    canViewFinancial:      false,
+    canManageSettings:     false,
+  },
+  patient: {
+    canManagePatients:     false,
+    canManageAgenda:       false,
+    canManageProfessionals: false,
+    canViewFinancial:      false,
+    canManageSettings:     false,
+  },
+} satisfies Record<UserRole, Record<string, boolean>>
 
 // ─── Database placeholder (replaced by supabase gen types) ───────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

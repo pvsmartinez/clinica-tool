@@ -1,15 +1,19 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './hooks/useAuth'
+import { useAuthContext } from './contexts/AuthContext'
+import RequireAuth from './components/auth/RequireAuth'
 import LoginPage from './pages/LoginPage'
+import AccessDeniedPage from './pages/AccessDeniedPage'
 import DashboardPage from './pages/DashboardPage'
 import PatientsPage from './pages/PatientsPage'
 import CadastroPage from './pages/CadastroPage'
 import PatientDetailPage from './pages/PatientDetailPage'
 import AppointmentsPage from './pages/AppointmentsPage'
+import MyAppointmentsPage from './pages/MyAppointmentsPage'
 import AppLayout from './components/layout/AppLayout'
+import PatientPortalLayout from './components/layout/PatientPortalLayout'
 
 function App() {
-  const { session, loading } = useAuth()
+  const { session, role, loading } = useAuthContext()
 
   if (loading) {
     return (
@@ -20,19 +24,68 @@ function App() {
   }
 
   if (!session) {
-    return <LoginPage />
+    return (
+      <Routes>
+        <Route path="*" element={<LoginPage />} />
+      </Routes>
+    )
   }
 
+  // Patient role gets a lightweight portal layout
+  if (role === 'patient') {
+    return (
+      <PatientPortalLayout>
+        <Routes>
+          <Route path="/" element={<Navigate to="/minhas-consultas" replace />} />
+          <Route path="/minhas-consultas" element={<MyAppointmentsPage />} />
+          <Route path="/acesso-negado" element={<AccessDeniedPage />} />
+          <Route path="*" element={<Navigate to="/minhas-consultas" replace />} />
+        </Routes>
+      </PatientPortalLayout>
+    )
+  }
+
+  // Staff roles (admin, receptionist, professional)
   return (
     <AppLayout>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/pacientes" element={<PatientsPage />} />
-        <Route path="/pacientes/novo" element={<CadastroPage />} />
-        <Route path="/pacientes/:id" element={<PatientDetailPage />} />
-        <Route path="/pacientes/:id/editar" element={<CadastroPage />} />
+        <Route
+          path="/pacientes"
+          element={
+            <RequireAuth permission="canViewPatients">
+              <PatientsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/pacientes/novo"
+          element={
+            <RequireAuth permission="canManagePatients">
+              <CadastroPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/pacientes/:id"
+          element={
+            <RequireAuth permission="canViewPatients">
+              <PatientDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/pacientes/:id/editar"
+          element={
+            <RequireAuth permission="canManagePatients">
+              <CadastroPage />
+            </RequireAuth>
+          }
+        />
         <Route path="/agenda" element={<AppointmentsPage />} />
+        <Route path="/acesso-negado" element={<AccessDeniedPage />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </AppLayout>
   )
