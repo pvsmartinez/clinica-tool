@@ -17,6 +17,7 @@ const FinanceiroPage         = lazy(() => import('../pages/FinanceiroPage'))
 const RelatoriosPage         = lazy(() => import('../pages/RelatoriosPage'))
 const WhatsAppInboxPage      = lazy(() => import('../pages/WhatsAppInboxPage'))
 const MinhaDisponibilidadePage = lazy(() => import('../pages/MinhaDisponibilidadePage'))
+const PatientAnamnesisPage    = lazy(() => import('../pages/PatientAnamnesisPage'))
 const AccessDeniedPage       = lazy(() => import('../pages/AccessDeniedPage'))
 
 // ─── Staff routes (rendered inside <AppLayout>) ───────────────────────────────
@@ -40,6 +41,9 @@ export default function StaffRoutes() {
       } />
       <Route path="/pacientes/:id/editar" element={
         <RequireAuth permission="canManagePatients"><CadastroPage /></RequireAuth>
+      } />
+      <Route path="/pacientes/:id/anamnese" element={
+        <RequireAuth permission="canViewPatients"><PatientAnamnesisPage /></RequireAuth>
       } />
 
       {/* Agenda */}

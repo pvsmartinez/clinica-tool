@@ -355,6 +355,7 @@ export type Database = {
           created_at: string
           custom_patient_fields: Json
           custom_professional_fields: Json
+          anamnesis_fields: Json
           email: string | null
           id: string
           name: string
@@ -388,6 +389,7 @@ export type Database = {
           created_at?: string
           custom_patient_fields?: Json
           custom_professional_fields?: Json
+          anamnesis_fields?: Json
           email?: string | null
           id?: string
           name: string
@@ -421,6 +423,7 @@ export type Database = {
           created_at?: string
           custom_patient_fields?: Json
           custom_professional_fields?: Json
+          anamnesis_fields?: Json
           email?: string | null
           id?: string
           name?: string
@@ -596,6 +599,7 @@ export type Database = {
           cpf: string | null
           created_at: string
           custom_fields: Json
+          anamnesis_data: Json
           email: string | null
           id: string
           name: string
@@ -618,6 +622,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string
           custom_fields?: Json
+          anamnesis_data?: Json
           email?: string | null
           id?: string
           name: string
@@ -640,6 +645,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string
           custom_fields?: Json
+          anamnesis_data?: Json
           email?: string | null
           id?: string
           name?: string
@@ -655,6 +661,57 @@ export type Database = {
             columns: ["clinic_id"]
             isOneToOne: false
             referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_files: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          id: string
+          mime_type: string | null
+          name: string
+          patient_id: string
+          size_bytes: number | null
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          id?: string
+          mime_type?: string | null
+          name: string
+          patient_id: string
+          size_bytes?: number | null
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          id?: string
+          mime_type?: string | null
+          name?: string
+          patient_id?: string
+          size_bytes?: number | null
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_files_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_files_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
             referencedColumns: ["id"]
           },
         ]

@@ -47,6 +47,7 @@ export function useClinic() {
           patient_field_config:       input.patientFieldConfig,
           custom_professional_fields: input.customProfessionalFields,
           professional_field_config:  input.professionalFieldConfig,
+          anamnesis_fields:           input.anamnesisFields,
           onboarding_completed:       input.onboardingCompleted,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...(input.paymentsEnabled      !== undefined ? { payments_enabled:      input.paymentsEnabled      } : {}),

@@ -1,10 +1,12 @@
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, PencilSimple, CalendarBlank, Phone, Envelope, MapPin } from '@phosphor-icons/react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ArrowLeft, PencilSimple, CalendarBlank, Phone, Envelope, MapPin, ClipboardText } from '@phosphor-icons/react'
 import { usePatient } from '../hooks/usePatients'
 import { usePatientAppointments } from '../hooks/useAppointments'
+import { useClinic } from '../hooks/useClinic'
 import Badge from '../components/ui/Badge'
 import { formatDate, formatDateTime } from '../utils/date'
 import PatientRecordsPanel from '../components/patients/PatientRecordsPanel'
+import PatientFilesPanel from '../components/patients/PatientFilesPanel'
 import {
   SEX_LABELS,
   APPOINTMENT_STATUS_LABELS,
@@ -34,6 +36,7 @@ export default function PatientDetailPage() {
   const navigate = useNavigate()
   const { patient, loading } = usePatient(id!)
   const { appointments, loading: loadingApts } = usePatientAppointments(id!)
+  const { data: clinic } = useClinic()
 
   if (loading) {
     return <div className="text-center text-gray-400 text-sm mt-20">Carregando...</div>
@@ -81,6 +84,13 @@ export default function PatientDetailPage() {
           <PencilSimple size={15} />
           Editar
         </button>
+        <Link
+          to={`/pacientes/${patient.id}/anamnese`}
+          className="flex items-center gap-2 text-sm text-gray-600 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg transition"
+        >
+          <ClipboardText size={15} />
+          Anamnese
+        </Link>
       </div>
 
       {/* Quick contact */}
@@ -174,6 +184,15 @@ export default function PatientDetailPage() {
       {/* Anotações e Anexos */}
       <Section title="Anotações e Exames">
         <PatientRecordsPanel patientId={id!} />
+      </Section>
+
+      {/* Arquivos */}
+      <Section title="Arquivos e Documentos">
+        {clinic ? (
+          <PatientFilesPanel patientId={id!} clinicId={clinic.id} />
+        ) : (
+          <p className="text-sm text-gray-400">Carregando...</p>
+        )}
       </Section>
     </div>
   )

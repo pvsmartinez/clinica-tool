@@ -42,8 +42,16 @@ async function callAdminFn<T>(
     try {
       const ctx = (error as unknown as { context?: Response }).context
       if (ctx) {
-        const json = await ctx.json() as { error?: string }
-        if (json?.error) msg = json.error
+        // Try JSON first, then plain text
+        let bodyText = ''
+        try {
+          const json = await ctx.clone().json() as { error?: string; message?: string }
+          if (json?.error) { msg = json.error; bodyText = json.error }
+          else if (json?.message) { msg = json.message; bodyText = json.message }
+        } catch {
+          bodyText = await ctx.text().catch(() => '')
+          if (bodyText) msg = bodyText
+        }
       }
     } catch { /* ignore — fallback to error.message */ }
     throw new Error(msg)

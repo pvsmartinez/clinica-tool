@@ -80,3 +80,4 @@ public/uploads/
 *.pem
 *.key
 *.crt
+.vercel

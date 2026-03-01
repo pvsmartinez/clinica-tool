@@ -212,3 +212,22 @@ export function useMyPatient() {
     updating: updateMut.isPending,
   }
 }
+
+// ─── Anamnesis ────────────────────────────────────────────────────────────────
+/** Save/replace all anamnesis answers for a patient. */
+export function useUpdateAnamnesis() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ patientId, data }: { patientId: string; data: Record<string, unknown> }) => {
+      const { error } = await supabase
+        .from('patients')
+        .update({ anamnesis_data: data as Json })
+        .eq('id', patientId)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: (_r, { patientId }) => {
+      qc.invalidateQueries({ queryKey: ['patient', patientId] })
+      qc.invalidateQueries({ queryKey: ['patients'] })
+    },
+  })
+}

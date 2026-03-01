@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Gear, CalendarBlank, Sliders, Clock, Door, CurrencyDollar, WhatsappLogo, Users } from '@phosphor-icons/react'
+import { Gear, CalendarBlank, Sliders, Clock, Door, CurrencyDollar, WhatsappLogo, Users, ClipboardText } from '@phosphor-icons/react'
 import { useClinic } from '../hooks/useClinic'
 import DadosTab from './settings/DadosTab'
 import AgendaTab from './settings/AgendaTab'
@@ -9,8 +9,9 @@ import SalasTab from './settings/SalasTab'
 import FinanceiroTab from './settings/FinanceiroTab'
 import WhatsAppTab from './settings/WhatsAppTab'
 import UsuariosTab from './settings/UsuariosTab'
+import AnamnesisTab from './settings/AnamnesisTab'
 
-type Tab = 'dados' | 'agenda' | 'campos' | 'disponibilidade' | 'salas' | 'financeiro' | 'whatsapp' | 'usuarios'
+type Tab = 'dados' | 'agenda' | 'campos' | 'disponibilidade' | 'salas' | 'financeiro' | 'whatsapp' | 'usuarios' | 'anamnese'
 
 const TABS: { id: Tab; label: string; icon: typeof Gear }[] = [
   { id: 'dados',           label: 'Dados da clínica',      icon: Gear          },
@@ -19,6 +20,7 @@ const TABS: { id: Tab; label: string; icon: typeof Gear }[] = [
   { id: 'disponibilidade', label: 'Disponibilidade',       icon: Clock          },
   { id: 'salas',           label: 'Salas / Espaços',       icon: Door           },
   { id: 'financeiro',      label: 'Financeiro',            icon: CurrencyDollar },
+  { id: 'anamnese',        label: 'Anamnese',              icon: ClipboardText  },
   { id: 'whatsapp',        label: 'WhatsApp',              icon: WhatsappLogo   },
   { id: 'usuarios',        label: 'Usuários',              icon: Users          },
 ]
@@ -58,6 +60,7 @@ export default function SettingsPage() {
       {tab === 'disponibilidade' && <DisponibilidadeTab />}
       {tab === 'salas'           && <SalasTab />}
       {tab === 'financeiro'      && <FinanceiroTab clinic={clinic} />}
+      {tab === 'anamnese'        && <AnamnesisTab clinic={clinic} />}
       {tab === 'whatsapp'        && <WhatsAppTab clinic={clinic} />}
       {tab === 'usuarios'        && <UsuariosTab />}
     </div>

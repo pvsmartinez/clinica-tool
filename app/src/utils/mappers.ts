@@ -47,6 +47,7 @@ export function mapClinic(r: Record<string, unknown>): Clinic {
     patientFieldConfig:       (r.patient_field_config as Clinic['patientFieldConfig']) ?? {},
     customProfessionalFields: (r.custom_professional_fields as Clinic['customProfessionalFields']) ?? [],
     professionalFieldConfig:  (r.professional_field_config as Clinic['professionalFieldConfig']) ?? {},
+    anamnesisFields:          (r.anamnesis_fields as Clinic['anamnesisFields']) ?? [],
     onboardingCompleted:      (r.onboarding_completed as boolean) ?? false,
     createdAt:                r.created_at as string,
     paymentsEnabled:          (r.payments_enabled as boolean) ?? false,
@@ -89,6 +90,7 @@ export function mapPatient(row: Record<string, unknown>): Patient {
     addressZip:           (row.address_zip as string) ?? null,
     notes:                (row.notes as string) ?? null,
     customFields:         (row.custom_fields as Record<string, unknown>) ?? {},
+    anamnesisData:        (row.anamnesis_data as Record<string, unknown>) ?? {},
     createdAt:            row.created_at as string,
   }
 }

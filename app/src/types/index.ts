@@ -21,6 +21,8 @@ export interface Clinic {
   // Professional form config
   customProfessionalFields: CustomFieldDef[]
   professionalFieldConfig: FieldConfig
+  // Anamnese configurável
+  anamnesisFields: CustomFieldDef[]
   // Onboarding
   onboardingCompleted: boolean
   createdAt: string
@@ -109,10 +111,13 @@ export interface Patient {
   notes: string | null
   // Flexible per-clinic extras
   customFields: Record<string, unknown>
+  // Anamnese (respostas do paciente às perguntas configuradas pela clínica)
+  anamnesisData: Record<string, unknown>
   createdAt: string
 }
 
-export type PatientInput = Omit<Patient, 'id' | 'clinicId' | 'createdAt'>
+// anamnesisData is managed separately — not part of the patient creation/edit form
+export type PatientInput = Omit<Patient, 'id' | 'clinicId' | 'createdAt' | 'anamnesisData'>
 
 // ─── Professional ────────────────────────────────────────────────────────────
 export interface Professional {

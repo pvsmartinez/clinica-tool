@@ -67,7 +67,10 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   const url     = new URL(req.url)
-  const parts   = url.pathname.replace(/^\/admin-users\/?/, '').split('/').filter(Boolean)
+  // Strip everything up to and including '/admin-users/' to get the sub-path.
+  // Works whether Supabase passes the full URL (/functions/v1/admin-users/...)
+  // or a stripped URL (/admin-users/...).
+  const parts   = url.pathname.replace(/^.*\/admin-users\/?/, '').split('/').filter(Boolean)
   const auth    = await assertSuperAdmin(req)
   if (auth instanceof Response) return auth
   const { adminClient } = auth
