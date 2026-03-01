@@ -1,10 +1,11 @@
 /**
- * Tests for usePatients hook (useEffect-based, not react-query).
- * Mocks the supabase client to avoid real network calls.
+ * Tests for usePatients hook (React Query).
+ * Mocks the supabase client and AuthContext to avoid real network calls.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import React from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { usePatients } from '../hooks/usePatients'
 
 // ─── Mock supabase ────────────────────────────────────────────────────────────
@@ -15,6 +16,12 @@ vi.mock('../services/supabase', () => ({
   supabase: {
     from: (table: string) => mockFrom(table),
   },
+}))
+
+// ─── Mock AuthContext ─────────────────────────────────────────────────────────
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuthContext: () => ({ profile: { clinicId: 'clinic-1', role: 'admin' } }),
 }))
 
 // ─── DB row fixture ───────────────────────────────────────────────────────────
@@ -41,11 +48,20 @@ const MOCK_DB_ROW = {
   created_at: '2024-01-01T10:00:00.000Z',
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// ─── Wrapper ─────────────────────────────────────────────────────────────────
 
-function wrapper({ children }: { children: React.ReactNode }) {
-  return React.createElement(React.Fragment, null, children)
+function makeWrapper() {
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  })
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: qc }, children)
 }
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('usePatients', () => {
   beforeEach(() => {
@@ -61,7 +77,7 @@ describe('usePatients', () => {
       then: vi.fn(), // never calls back
     })
 
-    const { result } = renderHook(() => usePatients(), { wrapper })
+    const { result } = renderHook(() => usePatients(), { wrapper: makeWrapper() })
     expect(result.current.loading).toBe(true)
     expect(result.current.patients).toEqual([])
   })
@@ -72,7 +88,6 @@ describe('usePatients', () => {
       order: vi.fn().mockReturnThis(),
       or: vi.fn().mockReturnThis(),
     } as Record<string, unknown>
-    // make it a "thenable" so await works
     Object.assign(chainable, {
       then(resolve: (v: unknown) => void, reject?: (e: unknown) => void) {
         return Promise.resolve({ data: [MOCK_DB_ROW], error: null }).then(resolve, reject)
@@ -80,7 +95,7 @@ describe('usePatients', () => {
     })
     mockFrom.mockReturnValue(chainable)
 
-    const { result } = renderHook(() => usePatients(), { wrapper })
+    const { result } = renderHook(() => usePatients(), { wrapper: makeWrapper() })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -111,7 +126,7 @@ describe('usePatients', () => {
     })
     mockFrom.mockReturnValue(chainable)
 
-    const { result } = renderHook(() => usePatients(), { wrapper })
+    const { result } = renderHook(() => usePatients(), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.error).toBe('DB error')
@@ -131,7 +146,7 @@ describe('usePatients', () => {
     })
     mockFrom.mockReturnValue(chainable)
 
-    const { result } = renderHook(() => usePatients(), { wrapper })
+    const { result } = renderHook(() => usePatients(), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.patients).toEqual([])
@@ -151,7 +166,7 @@ describe('usePatients', () => {
     })
     mockFrom.mockReturnValue(chainable)
 
-    const { result } = renderHook(() => usePatients('João'), { wrapper })
+    const { result } = renderHook(() => usePatients('João'), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(orMock).toHaveBeenCalledWith(expect.stringContaining('João'))

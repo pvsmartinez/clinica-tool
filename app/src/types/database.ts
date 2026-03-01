@@ -228,7 +228,7 @@ export type Database = {
           id: string
           invited_by: string | null
           name: string | null
-          role: Database["public"]["Enums"]["user_role"]
+          roles: Database["public"]["Enums"]["user_role"][]
           used_at: string | null
         }
         Insert: {
@@ -238,7 +238,7 @@ export type Database = {
           id?: string
           invited_by?: string | null
           name?: string | null
-          role?: Database["public"]["Enums"]["user_role"]
+          roles?: Database["public"]["Enums"]["user_role"][]
           used_at?: string | null
         }
         Update: {
@@ -248,7 +248,7 @@ export type Database = {
           id?: string
           invited_by?: string | null
           name?: string | null
-          role?: Database["public"]["Enums"]["user_role"]
+          roles?: Database["public"]["Enums"]["user_role"][]
           used_at?: string | null
         }
         Relationships: [
@@ -831,7 +831,7 @@ export type Database = {
           id: string
           is_super_admin: boolean
           name: string
-          role: Database["public"]["Enums"]["user_role"]
+          roles: Database["public"]["Enums"]["user_role"][]
         }
         Insert: {
           clinic_id?: string | null
@@ -840,7 +840,7 @@ export type Database = {
           id: string
           is_super_admin?: boolean
           name: string
-          role?: Database["public"]["Enums"]["user_role"]
+          roles?: Database["public"]["Enums"]["user_role"][]
         }
         Update: {
           clinic_id?: string | null
@@ -849,7 +849,7 @@ export type Database = {
           id?: string
           is_super_admin?: boolean
           name?: string
-          role?: Database["public"]["Enums"]["user_role"]
+          roles?: Database["public"]["Enums"]["user_role"][]
         }
         Relationships: [
           {

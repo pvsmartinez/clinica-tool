@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Clínica Tool",
+  "productName": "Consultin",
   "version": "0.1.0",
   "identifier": "br.com.consultin",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Clínica Tool",
+        "title": "Consultin",
         "width": 1280,
         "height": 800,
         "minWidth": 1000,

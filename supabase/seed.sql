@@ -8,7 +8,7 @@ VALUES (
   'Clínica Demo',
   '00000000000000',
   '11999999999',
-  'demo@clinicatool.com.br',
+  'demo@consultin.com.br',
   'São Paulo',
   'SP'
 );

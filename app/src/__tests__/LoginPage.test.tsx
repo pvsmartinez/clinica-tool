@@ -14,15 +14,15 @@ import LoginPage from '../pages/LoginPage'
 
 const mockSignInWithEmail = vi.fn()
 const mockSignInWithGoogle = vi.fn()
-const mockSignInWithFacebook = vi.fn()
 const mockSignInWithApple = vi.fn()
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuthContext: () => ({
     signInWithEmail: mockSignInWithEmail,
     signInWithGoogle: mockSignInWithGoogle,
-    signInWithFacebook: mockSignInWithFacebook,
     signInWithApple: mockSignInWithApple,
+    recoveryMode: false,
+    clearRecoveryMode: vi.fn(),
   }),
 }))
 
@@ -64,11 +64,11 @@ describe('LoginPage — login view', () => {
     expect(screen.getByPlaceholderText(/••••••••/)).toBeInTheDocument()
   })
 
-  it('renders all three OAuth buttons', () => {
+  it('renders Google and Apple OAuth buttons', () => {
     renderLogin()
     expect(screen.getByText(/Continuar com Google/i)).toBeInTheDocument()
-    expect(screen.getByText(/Continuar com Facebook/i)).toBeInTheDocument()
     expect(screen.getByText(/Continuar com Apple/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Continuar com Facebook/i)).not.toBeInTheDocument()
   })
 
   it('calls signInWithEmail with email and password on submit', async () => {
@@ -107,14 +107,6 @@ describe('LoginPage — login view', () => {
     expect(mockSignInWithGoogle).toHaveBeenCalled()
   })
 
-  it('calls signInWithFacebook when Facebook button clicked', async () => {
-    mockSignInWithFacebook.mockResolvedValue(undefined)
-    const user = userEvent.setup()
-    renderLogin()
-
-    await user.click(screen.getByText(/Continuar com Facebook/i))
-    expect(mockSignInWithFacebook).toHaveBeenCalled()
-  })
 })
 
 // ─── Forgot password view ─────────────────────────────────────────────────────

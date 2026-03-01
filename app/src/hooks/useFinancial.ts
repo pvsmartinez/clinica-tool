@@ -1,35 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { supabase } from '../services/supabase'
+import { mapAppointment } from '../utils/mappers'
 import type { Appointment } from '../types'
 
-export function formatBRL(cents: number | null | undefined): string {
-  if (cents == null) return '—'
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100)
-}
-
 export interface FinancialRow extends Appointment {
-  patient?: { id: string; name: string; phone: string | null }
+  patient?: { id: string; name: string; phone: string | null; cpf: string | null }
   professional?: { id: string; name: string; specialty: string | null }
-}
-
-function mapRow(row: Record<string, unknown>): FinancialRow {
-  return {
-    id:                row.id as string,
-    clinicId:          row.clinic_id as string,
-    patientId:         row.patient_id as string,
-    professionalId:    row.professional_id as string,
-    startsAt:          row.starts_at as string,
-    endsAt:            row.ends_at as string,
-    status:            row.status as Appointment['status'],
-    notes:             (row.notes as string) ?? null,
-    chargeAmountCents: (row.charge_amount_cents as number) ?? null,
-    paidAmountCents:   (row.paid_amount_cents as number) ?? null,
-    paidAt:            (row.paid_at as string) ?? null,
-    createdAt:         row.created_at as string,
-    patient:           row.patient as FinancialRow['patient'],
-    professional:      row.professional as FinancialRow['professional'],
-  }
 }
 
 export function useFinancial(month: Date) {
@@ -43,7 +20,7 @@ export function useFinancial(month: Date) {
         .from('appointments')
         .select(`
           *,
-          patient:patients(id, name, phone),
+          patient:patients(id, name, phone, cpf),
           professional:professionals(id, name, specialty)
         `)
         .gte('starts_at', monthStart)
@@ -51,7 +28,7 @@ export function useFinancial(month: Date) {
         .in('status', ['scheduled', 'confirmed', 'completed'])
         .order('starts_at', { ascending: false })
       if (error) throw error
-      return (data ?? []).map(r => mapRow(r as Record<string, unknown>))
+      return (data ?? []).map(r => mapAppointment(r as Record<string, unknown>) as FinancialRow)
     },
   })
 }
@@ -79,7 +56,8 @@ export function useMarkPaid() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['financial'] })
       qc.invalidateQueries({ queryKey: ['appointments'] })
-      qc.invalidateQueries({ queryKey: ['dashboard-kpis'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-clinic-kpis'] })
+      qc.invalidateQueries({ queryKey: ['dashboard-professional-kpis'] })
     },
   })
 }

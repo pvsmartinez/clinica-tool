@@ -13,6 +13,7 @@ import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom'
 import type { UserProfile, UserRole } from '../types'
+import { primaryRole, mergedPermissions } from '../types'
 
 // ─── React Query wrapper ──────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ export function makeQueryClient() {
 export const MOCK_ADMIN_PROFILE: UserProfile = {
   id: 'user-admin-1',
   clinicId: 'clinic-1',
-  role: 'admin',
+  roles: ['admin'],
   name: 'Admin User',
   isSuperAdmin: false,
 }
@@ -37,7 +38,7 @@ export const MOCK_ADMIN_PROFILE: UserProfile = {
 export const MOCK_RECEPTIONIST_PROFILE: UserProfile = {
   id: 'user-recept-1',
   clinicId: 'clinic-1',
-  role: 'receptionist',
+  roles: ['receptionist'],
   name: 'Recepcionist User',
   isSuperAdmin: false,
 }
@@ -45,7 +46,7 @@ export const MOCK_RECEPTIONIST_PROFILE: UserProfile = {
 export const MOCK_PROFESSIONAL_PROFILE: UserProfile = {
   id: 'user-prof-1',
   clinicId: 'clinic-1',
-  role: 'professional',
+  roles: ['professional'],
   name: 'Professional User',
   isSuperAdmin: false,
 }
@@ -53,7 +54,7 @@ export const MOCK_PROFESSIONAL_PROFILE: UserProfile = {
 export const MOCK_PATIENT_PROFILE: UserProfile = {
   id: 'user-patient-1',
   clinicId: 'clinic-1',
-  role: 'patient',
+  roles: ['patient'],
   name: 'Patient User',
   isSuperAdmin: false,
 }
@@ -72,17 +73,11 @@ export function buildMockAuth(overrides: Partial<{
   hasSession: boolean
 }> = {}) {
   const profile = overrides.profile ?? null
-  const role = overrides.role ?? profile?.role ?? null
+  const role = overrides.role ?? (profile ? primaryRole(profile.roles) : null)
 
   function hasPermission(key: string): boolean {
     if (!profile) return false
-    const map: Record<string, Record<string, boolean>> = {
-      admin:        { canViewPatients: true,  canManagePatients: true,  canManageAgenda: true,  canManageProfessionals: true,  canViewFinancial: true,  canManageSettings: true  },
-      receptionist: { canViewPatients: true,  canManagePatients: true,  canManageAgenda: true,  canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-      professional: { canViewPatients: true,  canManagePatients: false, canManageAgenda: true,  canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-      patient:      { canViewPatients: false, canManagePatients: false, canManageAgenda: false, canManageProfessionals: false, canViewFinancial: false, canManageSettings: false },
-    }
-    return map[profile.role]?.[key] ?? false
+    return mergedPermissions(profile.roles)[key] ?? false
   }
 
   return {
@@ -93,10 +88,11 @@ export function buildMockAuth(overrides: Partial<{
     loading:         overrides.loading ?? false,
     signInWithEmail: vi.fn().mockResolvedValue({ error: null }),
     signInWithGoogle: vi.fn().mockResolvedValue(undefined),
-    signInWithFacebook: vi.fn().mockResolvedValue(undefined),
     signInWithApple: vi.fn().mockResolvedValue(undefined),
     signOut:         vi.fn().mockResolvedValue(undefined),
     hasPermission,
+    recoveryMode:    false,
+    clearRecoveryMode: vi.fn(),
   }
 }
 

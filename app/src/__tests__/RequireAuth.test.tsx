@@ -34,8 +34,9 @@ function buildAuth({
   hasPermission = (_k: string): boolean => false,
 } = {}) {
   return { session, role, loading, hasPermission, profile: null, isSuperAdmin: false,
-    signInWithEmail: vi.fn(), signInWithGoogle: vi.fn(), signInWithFacebook: vi.fn(),
-    signInWithApple: vi.fn(), signOut: vi.fn() }
+    signInWithEmail: vi.fn(), signInWithGoogle: vi.fn(),
+    signInWithApple: vi.fn(), signOut: vi.fn(),
+    recoveryMode: false, clearRecoveryMode: vi.fn() }
 }
 
 function renderGuard(guardProps: GuardProps) {

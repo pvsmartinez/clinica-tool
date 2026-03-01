@@ -59,8 +59,9 @@ export default function OnboardingPage() {
         inviteId: invite.id,
         userId:   session.user.id,
         clinicId: invite.clinicId,
-        role:     invite.role,
+        roles:    invite.roles,
         name:     inviteName,
+        email:    session.user.email,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao confirmar acesso.')
@@ -75,17 +76,16 @@ export default function OnboardingPage() {
     setLoading(true); setError(null)
     try {
       // 1. Create patient record
-      const { data: patient, error: patientErr } = await supabase
+      const { error: patientErr } = await supabase
         .from('patients')
         .insert({
           clinic_id: patientClinicId,
+          user_id:   session.user.id,   // link from day one
           name:      patientName.trim(),
           phone:     patientPhone.trim() || null,
           cpf:       patientCpf.trim()   || null,
           email:     email || null,
         })
-        .select('id')
-        .single()
       if (patientErr) throw new Error(patientErr.message)
 
       // 2. Create user_profiles as patient
@@ -94,15 +94,11 @@ export default function OnboardingPage() {
         .insert({
           id:             session.user.id,
           clinic_id:      patientClinicId,
-          role:           'patient',
+          roles:          ['patient'],
           name:           patientName.trim(),
           is_super_admin: false,
-          patient_id:     patient.id,   // link for "Meu Perfil" page (nullable col)
         })
-      // NOTE: patient_id column is optional — ignore FK error gracefully if missing
-      if (profileErr && !profileErr.message.includes('patient_id')) {
-        throw new Error(profileErr.message)
-      }
+      if (profileErr) throw new Error(profileErr.message)
 
       // 3. Re-fetch session → AuthContext picks up the new profile
       await supabase.auth.refreshSession()
@@ -118,7 +114,7 @@ export default function OnboardingPage() {
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
         <div className="flex items-center gap-2 mb-6">
           <Stethoscope size={24} className="text-blue-600" />
-          <span className="text-lg font-semibold text-gray-800">Clínica Tool</span>
+          <span className="text-lg font-semibold text-gray-800">Consultin</span>
         </div>
         {children}
       </div>
@@ -145,7 +141,7 @@ export default function OnboardingPage() {
         <p className="text-sm text-gray-400 mb-1">
           Você foi convidado para{' '}
           <span className="font-medium text-gray-700">{invite.clinicName ?? 'a clínica'}</span>{' '}
-          como <span className="font-medium text-gray-700">{invite.role === 'professional' ? 'profissional' : invite.role}</span>.
+          como <span className="font-medium text-gray-700">{invite.roles.includes('professional') ? 'profissional' : invite.roles.map(r => r).join(', ')}</span>.
         </p>
         <p className="text-xs text-gray-400 mb-6">Confirme seu nome para ativar o acesso.</p>
 

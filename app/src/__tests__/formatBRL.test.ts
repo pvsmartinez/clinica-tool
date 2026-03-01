@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBRL } from '../hooks/useFinancial'
+import { formatBRL } from '../utils/currency'
 
 describe('formatBRL', () => {
   it('returns "—" for null', () => {

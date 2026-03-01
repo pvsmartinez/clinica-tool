@@ -1,25 +1,35 @@
 import { useState } from 'react'
-import { Plus, PencilSimple, ToggleRight, ToggleLeft, Envelope, Trash } from '@phosphor-icons/react'
+import { Plus, PencilSimple, ToggleRight, ToggleLeft, Envelope, Trash, Bank } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { useProfessionals } from '../hooks/useProfessionals'
 import { usePendingInvites, useCreateInvite, useDeleteInvite } from '../hooks/useInvites'
 import ProfessionalModal from '../components/professionals/ProfessionalModal'
+import ProfessionalBankAccountModal from '../components/professionals/ProfessionalBankAccountModal'
+import { useClinic } from '../hooks/useClinic'
 import type { Professional } from '../types'
 
 export default function ProfessionalsPage() {
   const { data: professionals = [], isLoading, toggleActive } = useProfessionals()
   const { data: pendingInvites = [], isLoading: loadingInvites } = usePendingInvites()
+  const { data: clinic } = useClinic()
   const createInvite = useCreateInvite()
   const deleteInvite = useDeleteInvite()
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<Professional | null>(null)
+  const [modalOpen, setModalOpen]   = useState(false)
+  const [editing, setEditing]       = useState<Professional | null>(null)
+  const [bankPro, setBankPro]       = useState<Professional | null>(null)
 
   // Standalone invite form state
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [inviteEmail, setInviteEmail]       = useState('')
   const [inviteName, setInviteName]         = useState('')
-  const [inviteRole, setInviteRole]         = useState<'professional' | 'receptionist' | 'admin'>('professional')
+  const [inviteRoles, setInviteRoles]       = useState<('professional' | 'receptionist' | 'admin')[]>(['professional'])
+
+  function toggleInviteRole(role: 'professional' | 'receptionist' | 'admin') {
+    setInviteRoles(prev =>
+      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+    )
+  }
 
   function openNew() { setEditing(null); setModalOpen(true) }
   function openEdit(p: Professional) { setEditing(p); setModalOpen(true) }
@@ -37,9 +47,9 @@ export default function ProfessionalsPage() {
     e.preventDefault()
     if (!inviteEmail.trim()) return
     try {
-      await createInvite.mutateAsync({ email: inviteEmail.trim(), role: inviteRole, name: inviteName.trim() || undefined })
+      await createInvite.mutateAsync({ email: inviteEmail.trim(), roles: inviteRoles, name: inviteName.trim() || undefined })
       toast.success('Convite registrado')
-      setInviteEmail(''); setInviteName(''); setShowInviteForm(false)
+      setInviteEmail(''); setInviteName(''); setInviteRoles(['professional']); setShowInviteForm(false)
     } catch {
       toast.error('Erro ao criar convite')
     }
@@ -95,13 +105,22 @@ export default function ProfessionalsPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Perfil</label>
-              <select value={inviteRole} onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="professional">Profissional</option>
-                <option value="receptionist">Atendente</option>
-                <option value="admin">Administrador</option>
-              </select>
+              <label className="block text-xs text-gray-500 mb-1">Funções (múltipla escolha)</label>
+              <div className="flex gap-4 items-center h-[38px]">
+                {(['professional', 'receptionist', 'admin'] as const).map(r => (
+                  <label key={r} className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={inviteRoles.includes(r)}
+                      onChange={() => toggleInviteRole(r)}
+                      className="w-3.5 h-3.5 rounded accent-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">
+                      {r === 'professional' ? 'Profissional' : r === 'receptionist' ? 'Atendente' : 'Administrador'}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
             <button type="submit" disabled={createInvite.isPending}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50">
@@ -154,6 +173,13 @@ export default function ProfessionalsPage() {
                   title={p.active ? 'Desativar' : 'Ativar'}>
                   {p.active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                 </button>
+                {clinic?.paymentsEnabled && (
+                  <button onClick={() => setBankPro(p)}
+                    className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                    title="Conta bancária para repasse">
+                    <Bank size={16} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -172,7 +198,11 @@ export default function ProfessionalsPage() {
                 <div>
                   <p className="text-sm text-gray-700">{inv.email}</p>
                   <p className="text-xs text-gray-400">
-                    {inv.role === 'professional' ? 'Profissional' : inv.role === 'receptionist' ? 'Atendente' : 'Admin'}
+                    {inv.roles?.map(r => (
+                      <span key={r} className="text-xs font-medium">
+                        {r === 'professional' ? 'Profissional' : r === 'receptionist' ? 'Atendente' : 'Admin'}
+                      </span>
+                    )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ' / ', el], [])}
                     {inv.name ? ` · ${inv.name}` : ''}
                     {' · enviado '}
                     {new Date(inv.createdAt).toLocaleDateString('pt-BR')}
@@ -197,6 +227,13 @@ export default function ProfessionalsPage() {
         onClose={() => setModalOpen(false)}
         professional={editing}
       />
+
+      {bankPro && (
+        <ProfessionalBankAccountModal
+          professional={bankPro}
+          onClose={() => setBankPro(null)}
+        />
+      )}
     </div>
   )
 }

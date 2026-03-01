@@ -15,20 +15,67 @@ export interface Clinic {
   state: string | null
   slotDurationMinutes: number
   workingHours: Partial<Record<'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun', WorkingHours>>
+  // Patient form config
   customPatientFields: CustomFieldDef[]
+  patientFieldConfig: FieldConfig
+  // Professional form config
+  customProfessionalFields: CustomFieldDef[]
+  professionalFieldConfig: FieldConfig
+  // Onboarding
+  onboardingCompleted: boolean
   createdAt: string
+  // Asaas billing
+  paymentsEnabled: boolean
+  asaasCustomerId: string | null
+  asaasSubscriptionId: string | null
+  subscriptionStatus: 'ACTIVE' | 'OVERDUE' | 'INACTIVE' | 'EXPIRED' | null
+  // WhatsApp Business
+  whatsappEnabled: boolean
+  whatsappPhoneNumberId: string | null
+  whatsappPhoneDisplay: string | null
+  whatsappWabaId: string | null
+  whatsappVerifyToken: string | null
+  waRemindersd1: boolean
+  waRemindersd0: boolean
+  waProfessionalAgenda: boolean
+  waAttendantInbox: boolean
+  waAiModel: string
 }
 
 // ─── Custom fields (clinic-defined) ──────────────────────────────────────────
-export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'boolean'
+export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'boolean'
 
 export interface CustomFieldDef {
   key: string
   label: string
   type: CustomFieldType
   required: boolean
-  options?: string[]   // only for type "select"
+  options?: string[]   // only for 'select' and 'multiselect'
 }
+
+// ─── Built-in field toggle config ────────────────────────────────────────────
+// Record<fieldKey, boolean> — missing key means true (visible by default)
+export type FieldConfig = Record<string, boolean>
+
+/** Built-in patient fields that clinics can toggle on/off (name is always on) */
+export const PATIENT_BUILTIN_FIELDS: { key: string; label: string; group: string }[] = [
+  { key: 'cpf',         label: 'CPF',               group: 'Dados Pessoais' },
+  { key: 'rg',          label: 'RG',                group: 'Dados Pessoais' },
+  { key: 'birthDate',   label: 'Data de nascimento', group: 'Dados Pessoais' },
+  { key: 'sex',         label: 'Sexo',              group: 'Dados Pessoais' },
+  { key: 'phone',       label: 'Telefone / WhatsApp', group: 'Contato' },
+  { key: 'email',       label: 'E-mail',            group: 'Contato' },
+  { key: 'address',     label: 'Endereço completo',  group: 'Endereço' },
+  { key: 'notes',       label: 'Observações',        group: 'Observações' },
+]
+
+/** Built-in professional fields that clinics can toggle on/off (name is always on) */
+export const PROFESSIONAL_BUILTIN_FIELDS: { key: string; label: string }[] = [
+  { key: 'specialty',  label: 'Especialidade' },
+  { key: 'councilId',  label: 'Conselho (CRM / CRO / CREFITO)' },
+  { key: 'phone',      label: 'Telefone' },
+  { key: 'email',      label: 'E-mail' },
+]
 
 // ─── Patient ─────────────────────────────────────────────────────────────────
 export type Sex = 'M' | 'F' | 'O'
@@ -42,6 +89,7 @@ export const SEX_LABELS: Record<Sex, string> = {
 export interface Patient {
   id: string
   clinicId: string
+  userId: string | null       // auth.users.id — set when patient has a portal account
   // Core fields
   name: string
   cpf: string | null
@@ -70,11 +118,26 @@ export type PatientInput = Omit<Patient, 'id' | 'clinicId' | 'createdAt'>
 export interface Professional {
   id: string
   clinicId: string
+  userId: string | null      // auth.users.id — set when professional accepted invite
   name: string
   specialty: string | null
   councilId: string | null     // CRM / CRO / CREFITO etc.
   phone: string | null
   email: string | null
+  active: boolean
+  customFields: Record<string, unknown>
+  createdAt: string
+}
+
+export type ProfessionalInput = Omit<Professional, 'id' | 'clinicId' | 'userId' | 'createdAt'>
+
+// Junction: one user ↔ one clinic (professionals can work at multiple clinics)
+export interface UserClinicMembership {
+  id: string
+  userId: string
+  clinicId: string
+  clinicName?: string  // joined from clinics
+  professionalId: string | null
   active: boolean
   createdAt: string
 }
@@ -103,6 +166,16 @@ export const APPOINTMENT_STATUS_COLORS: Record<AppointmentStatus, string> = {
   no_show:    'bg-yellow-100 text-yellow-700',
 }
 
+// ─── Clinic Room ────────────────────────────────────────────────────────────
+export interface ClinicRoom {
+  id: string
+  clinicId: string
+  name: string
+  color: string  // hex, e.g. #6366f1
+  active: boolean
+  createdAt: string
+}
+
 export interface Appointment {
   id: string
   clinicId: string
@@ -112,13 +185,17 @@ export interface Appointment {
   endsAt: string
   status: AppointmentStatus
   notes: string | null
+  room: string | null          // legacy free-text (kept for compat)
+  roomId: string | null         // FK to clinic_rooms
   chargeAmountCents: number | null
   paidAmountCents: number | null
+  professionalFeeCents: number | null
   paidAt: string | null
   createdAt: string
   // Joined relations (fetched with select)
-  patient?: Pick<Patient, 'id' | 'name' | 'phone'>
+  patient?: Pick<Patient, 'id' | 'name' | 'phone' | 'cpf'>
   professional?: Pick<Professional, 'id' | 'name' | 'specialty'>
+  clinicRoom?: Pick<ClinicRoom, 'id' | 'name' | 'color'>
 }
 
 // ─── Availability slot ────────────────────────────────────────────────────────
@@ -152,9 +229,30 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
 export interface UserProfile {
   id: string
   clinicId: string | null  // null for super admins not yet assigned to a clinic
-  role: UserRole
+  roles: UserRole[]
   name: string
   isSuperAdmin: boolean
+}
+
+// Role priority for display and RLS fallback (highest first)
+const ROLE_PRIORITY: UserRole[] = ['admin', 'receptionist', 'professional', 'patient']
+
+/** Returns the highest-privilege role from a roles array. */
+export function primaryRole(roles: UserRole[] | undefined | null): UserRole {
+  if (!Array.isArray(roles)) return 'patient'
+  for (const r of ROLE_PRIORITY) {
+    if (roles.includes(r)) return r
+  }
+  return 'patient'
+}
+
+/** Returns merged permission map — true if ANY role grants the permission. */
+export function mergedPermissions(roles: UserRole[] | undefined | null): Record<string, boolean> {
+  if (!Array.isArray(roles)) return Object.fromEntries(Object.keys(ROLE_PERMISSIONS.admin).map(k => [k, false]))
+  const keys = Object.keys(ROLE_PERMISSIONS.admin)
+  return Object.fromEntries(
+    keys.map(k => [k, roles.some(r => (ROLE_PERMISSIONS[r] as Record<string, boolean>)[k] === true)])
+  )
 }
 
 // What each role is allowed to do
@@ -166,6 +264,8 @@ export const ROLE_PERMISSIONS = {
     canManageProfessionals: true,
     canViewFinancial:      true,
     canManageSettings:     true,
+    canViewWhatsApp:       true,  // inbox: admin always
+    canManageOwnAvailability: false,
   },
   receptionist: {
     canViewPatients:       true,
@@ -174,6 +274,8 @@ export const ROLE_PERMISSIONS = {
     canManageProfessionals: false,
     canViewFinancial:      false,
     canManageSettings:     false,
+    canViewWhatsApp:       true,  // inbox: receptionist is primary user
+    canManageOwnAvailability: false,
   },
   professional: {
     canViewPatients:       true,
@@ -182,6 +284,8 @@ export const ROLE_PERMISSIONS = {
     canManageProfessionals: false,
     canViewFinancial:      false,
     canManageSettings:     false,
+    canViewWhatsApp:       false,
+    canManageOwnAvailability: true,  // professional self-manages their schedule
   },
   patient: {
     canViewPatients:       false,
@@ -190,6 +294,8 @@ export const ROLE_PERMISSIONS = {
     canManageProfessionals: false,
     canViewFinancial:      false,
     canManageSettings:     false,
+    canViewWhatsApp:       false,
+    canManageOwnAvailability: false,
   },
 } satisfies Record<UserRole, Record<string, boolean>>
 
@@ -199,13 +305,192 @@ export interface ClinicInvite {
   clinicId: string
   clinicName?: string   // joined from clinics table
   email: string
-  role: UserRole
+  roles: UserRole[]
   name: string | null
   invitedBy: string | null
   usedAt: string | null
   createdAt: string
 }
 
-// ─── Database placeholder (replaced by supabase gen types) ───────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Database = any
+// ─── Generated Supabase schema types (auto-generated — do not edit by hand) ───
+// Re-run: SUPABASE_ACCESS_TOKEN=<PAT> npx supabase@2 gen types typescript --project-id bpipnidvqygjjfhwfhtv > src/types/database.ts
+export type { Database, Json } from './database'
+
+// ─── Asaas Billing ───────────────────────────────────────────────────────────
+export type AsaasBillingType = 'PIX' | 'CREDIT_CARD' | 'BOLETO' | 'UNDEFINED'
+export type SubscriptionStatus = 'ACTIVE' | 'OVERDUE' | 'INACTIVE' | 'EXPIRED'
+
+export type PaymentStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'RECEIVED'
+  | 'OVERDUE'
+  | 'REFUNDED'
+  | 'CANCELLED'
+
+export type TransferStatus = 'PENDING' | 'TRANSFERRED' | 'FAILED' | 'NOT_APPLICABLE'
+export type BankAccountType = 'CONTA_CORRENTE' | 'CONTA_POUPANCA' | 'CONTA_SALARIO'
+
+export interface ProfessionalBankAccount {
+  id: string
+  clinicId: string
+  professionalId: string
+  bankCode: string
+  bankName: string
+  accountType: BankAccountType
+  agency: string
+  agencyDigit: string | null
+  account: string
+  accountDigit: string | null
+  ownerName: string
+  ownerCpfCnpj: string
+  asaasTransferId: string | null
+  active: boolean
+  createdAt: string
+}
+
+export type ProfessionalBankAccountInput = Omit<
+  ProfessionalBankAccount,
+  'id' | 'clinicId' | 'asaasTransferId' | 'createdAt'
+>
+
+export interface AppointmentPayment {
+  id: string
+  clinicId: string
+  appointmentId: string
+  asaasChargeId: string | null
+  paymentMethod: AsaasBillingType | null
+  status: PaymentStatus
+  amountCents: number
+  pixKey: string | null
+  pixExpiresAt: string | null
+  paidAt: string | null
+  transferStatus: TransferStatus
+  transferAmountCents: number | null
+  asaasTransferId: string | null
+  transferredAt: string | null
+  notes: string | null
+  createdAt: string
+}
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PENDING:   'Pendente',
+  CONFIRMED: 'Confirmado',
+  RECEIVED:  'Recebido',
+  OVERDUE:   'Vencido',
+  REFUNDED:  'Estornado',
+  CANCELLED: 'Cancelado',
+}
+
+export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
+  PENDING:   'bg-yellow-100 text-yellow-700',
+  CONFIRMED: 'bg-blue-100 text-blue-700',
+  RECEIVED:  'bg-green-100 text-green-700',
+  OVERDUE:   'bg-red-100 text-red-700',
+  REFUNDED:  'bg-gray-100 text-gray-500',
+  CANCELLED: 'bg-gray-100 text-gray-500',
+}
+
+export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = {
+  PENDING:        'Aguardando',
+  TRANSFERRED:    'Repassado',
+  FAILED:         'Falhou',
+  NOT_APPLICABLE: 'N/A',
+}
+
+export const BANK_LIST: { code: string; name: string }[] = [
+  { code: '001', name: 'Banco do Brasil' },
+  { code: '033', name: 'Santander' },
+  { code: '077', name: 'Inter' },
+  { code: '104', name: 'Caixa Econômica Federal' },
+  { code: '208', name: 'BTG Pactual' },
+  { code: '237', name: 'Bradesco' },
+  { code: '260', name: 'Nu Pagamentos (Nubank)' },
+  { code: '290', name: 'PagSeguro' },
+  { code: '341', name: 'Itaú' },
+  { code: '336', name: 'C6 Bank' },
+  { code: '380', name: 'PicPay' },
+  { code: '422', name: 'Safra' },
+  { code: '623', name: 'Pan' },
+  { code: '655', name: 'Votorantim' },
+  { code: '735', name: 'Neon' },
+  { code: '748', name: 'Sicredi' },
+  { code: '756', name: 'Sicoob' },
+  { code: '021', name: 'Banestes' },
+  { code: '041', name: 'Banrisul' },
+  { code: '212', name: 'Banco Original' },
+]
+
+// ─── WhatsApp ─────────────────────────────────────────────────────────────────
+
+export type WhatsAppSessionStatus = 'ai' | 'human' | 'resolved'
+
+export interface WhatsAppSession {
+  id: string
+  clinicId: string
+  patientId: string | null
+  waPhone: string
+  status: WhatsAppSessionStatus
+  aiDraft: string | null
+  lastMessageAt: string
+  createdAt: string
+  // joined
+  patientName?: string | null
+}
+
+export type WhatsAppMessageDirection = 'inbound' | 'outbound'
+export type WhatsAppMessageType     = 'text' | 'template' | 'interactive' | 'image' | 'document' | 'audio'
+export type WhatsAppSentBy          = 'patient' | 'ai' | 'attendant' | 'system'
+export type WhatsAppDeliveryStatus  = 'sent' | 'delivered' | 'read' | 'failed'
+
+export interface WhatsAppMessage {
+  id: string
+  sessionId: string
+  clinicId: string
+  direction: WhatsAppMessageDirection
+  waMessageId: string | null
+  body: string | null   // null after LGPD retention purge
+  messageType: WhatsAppMessageType
+  sentBy: WhatsAppSentBy
+  deliveryStatus: WhatsAppDeliveryStatus | null
+  createdAt: string
+}
+
+export interface WhatsAppTemplate {
+  id: string
+  clinicId: string
+  templateKey: string
+  metaTemplateName: string
+  language: string
+  bodyPreview: string
+  enabled: boolean
+  createdAt: string
+}
+
+/** Available OpenRouter models for WhatsApp AI agent */
+export const WA_AI_MODELS: { value: string; label: string }[] = [
+  { value: 'openai/gpt-4o-mini',           label: 'GPT-4o Mini (OpenAI) — recomendado' },
+  { value: 'google/gemini-flash-1.5',      label: 'Gemini Flash 1.5 (Google)' },
+  { value: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B (Meta) — gratuito' },
+  { value: 'mistralai/mistral-7b-instruct:free',    label: 'Mistral 7B — gratuito' },
+  { value: 'anthropic/claude-3-haiku',     label: 'Claude 3 Haiku (Anthropic)' },
+]
+
+// ─── Patient Records (notes + attachments) ────────────────────────────────────
+export type RecordType = 'note' | 'attachment'
+
+export interface PatientRecord {
+  id: string
+  clinicId: string
+  patientId: string
+  appointmentId: string | null
+  createdBy: string             // user_profiles.id
+  createdByName: string | null  // joined from user_profiles.name
+  type: RecordType
+  content: string | null        // text content for notes
+  fileName: string | null       // original filename for attachments
+  filePath: string | null       // path inside "patient-files" bucket
+  fileMime: string | null
+  fileSize: number | null
+  createdAt: string
+}

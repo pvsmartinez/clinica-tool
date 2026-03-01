@@ -3,16 +3,22 @@ import { format, addMonths, subMonths, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CaretLeft, CaretRight, CheckCircle, CurrencyCircleDollar } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { useFinancial, useMarkPaid, formatBRL } from '../hooks/useFinancial'
+import { useFinancial, useMarkPaid } from '../hooks/useFinancial'
+import { formatBRL } from '../utils/currency'
+import { useClinic } from '../hooks/useClinic'
 import Badge from '../components/ui/Badge'
+import AppointmentPaymentModal from '../components/appointments/AppointmentPaymentModal'
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '../types'
+import type { Appointment } from '../types'
 
 export default function FinanceiroPage() {
   const [month, setMonth] = useState(new Date())
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payingAmount, setPayingAmount] = useState('')
+  const [chargingAppointment, setChargingAppointment] = useState<Appointment | null>(null)
 
   const { data = [], isLoading } = useFinancial(month)
+  const { data: clinic }         = useClinic()
   const markPaid = useMarkPaid()
 
   const totalCharged = data.reduce((s, r) => s + (r.chargeAmountCents ?? 0), 0)
@@ -83,6 +89,9 @@ export default function FinanceiroPage() {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Valor</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pago</th>
                 <th className="px-4 py-3" />
+                {clinic?.paymentsEnabled && (
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-indigo-500 uppercase tracking-wide">Asaas</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -155,6 +164,17 @@ export default function FinanceiroPage() {
                       </button>
                     ) : null}
                   </td>
+                  {clinic?.paymentsEnabled && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setChargingAppointment(row)}
+                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap border border-indigo-200 rounded-lg px-2 py-1 hover:bg-indigo-50 transition-colors"
+                      >
+                        <CurrencyCircleDollar size={13} />
+                        Cobrar
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -166,6 +186,13 @@ export default function FinanceiroPage() {
         <p className="text-xs text-gray-400 mt-3">
           {pending.length} consulta{pending.length > 1 ? 's' : ''} com pagamento pendente.
         </p>
+      )}
+
+      {chargingAppointment && (
+        <AppointmentPaymentModal
+          appointment={chargingAppointment}
+          onClose={() => setChargingAppointment(null)}
+        />
       )}
     </div>
   )

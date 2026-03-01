@@ -6,8 +6,10 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import Input from '../ui/Input'
+import CustomFieldInput from '../ui/CustomFieldInput'
 import { useProfessionals } from '../../hooks/useProfessionals'
 import { useCreateInvite } from '../../hooks/useInvites'
+import { useClinic } from '../../hooks/useClinic'
 import type { Professional } from '../../types'
 
 const schema = z.object({
@@ -29,8 +31,13 @@ interface Props {
 export default function ProfessionalModal({ open, onClose, professional }: Props) {
   const { create, update } = useProfessionals()
   const createInvite = useCreateInvite()
+  const { data: clinic } = useClinic()
   const isEditing = !!professional
   const [createAccess, setCreateAccess] = useState(false)
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
+
+  const isFieldVisible = (key: string) => clinic?.professionalFieldConfig?.[key] !== false
+  const customProfessionalFields = clinic?.customProfessionalFields ?? []
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -40,6 +47,7 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
   useEffect(() => {
     if (open) {
       setCreateAccess(false)
+      setCustomFields(professional?.customFields ?? {})
       reset(professional ? {
         name: professional.name,
         specialty: professional.specialty ?? '',
@@ -60,6 +68,7 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
         phone: values.phone || null,
         email: values.email || null,
         active: values.active,
+        customFields,
       }
       if (isEditing) {
         await update.mutateAsync({ id: professional!.id, ...payload })
@@ -71,7 +80,7 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
           try {
             await createInvite.mutateAsync({
               email: values.email,
-              role: 'professional',
+              roles: ['professional'],
               name: values.name,
             })
             toast.success('Profissional cadastrado e convite enviado')
@@ -94,7 +103,7 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
     <Dialog.Root open={open} onOpenChange={v => !v && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40 z-40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl w-full max-w-md p-6 focus:outline-none">
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-xl w-full max-w-md p-6 focus:outline-none max-h-[90dvh] overflow-y-auto">
           <div className="flex items-center justify-between mb-5">
             <Dialog.Title className="text-base font-semibold text-gray-800">
               {isEditing ? 'Editar profissional' : 'Novo profissional'}
@@ -106,16 +115,41 @@ export default function ProfessionalModal({ open, onClose, professional }: Props
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input label="Nome *" error={errors.name?.message} {...register('name')} />
-            <Input label="Especialidade" {...register('specialty')} />
-            <Input label="Conselho (CRM / CRO / CREFITO)" {...register('councilId')} />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Telefone" {...register('phone')} />
-              <Input label="E-mail" type="email" error={errors.email?.message} {...register('email')} />
-            </div>
+            {isFieldVisible('specialty') && (
+              <Input label="Especialidade" {...register('specialty')} />
+            )}
+            {isFieldVisible('councilId') && (
+              <Input label="Conselho (CRM / CRO / CREFITO)" {...register('councilId')} />
+            )}
+            {(isFieldVisible('phone') || isFieldVisible('email')) && (
+              <div className="grid grid-cols-2 gap-3">
+                {isFieldVisible('phone') && (
+                  <Input label="Telefone" {...register('phone')} />
+                )}
+                {isFieldVisible('email') && (
+                  <Input label="E-mail" type="email" error={errors.email?.message} {...register('email')} />
+                )}
+              </div>
+            )}
             <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input type="checkbox" className="rounded" {...register('active')} />
               Profissional ativo
             </label>
+
+            {/* Custom fields */}
+            {customProfessionalFields.length > 0 && (
+              <div className="space-y-3 pt-1 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Informações adicionais</p>
+                {customProfessionalFields.map(field => (
+                  <CustomFieldInput
+                    key={field.key}
+                    field={field}
+                    value={customFields[field.key]}
+                    onChange={(key, val) => setCustomFields(prev => ({ ...prev, [key]: val }))}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Invite to system access — only shown on creation when email is provided */}
             {!isEditing && (

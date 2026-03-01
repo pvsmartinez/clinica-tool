@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { IMaskInput } from 'react-imask'
 import { toast } from 'sonner'
-import { supabase } from '../services/supabase'
-import { useAuthContext } from '../contexts/AuthContext'
+import { useMyPatient } from '../hooks/usePatients'
 
 interface ProfileForm {
   name: string
@@ -11,53 +10,35 @@ interface ProfileForm {
 }
 
 export default function MeuPerfilPage() {
-  const { session } = useAuthContext()
+  const { patient, loading, updatePatient, updating } = useMyPatient()
   const [form, setForm] = useState<ProfileForm>({ name: '', phone: '', email: '' })
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [patientId, setPatientId] = useState<string | null>(null)
 
+  // Sync form once patient data loads
   useEffect(() => {
-    if (!session) return
-    supabase
-      .from('patients')
-      .select('id, name, phone, email')
-      .eq('user_id', session.user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setPatientId(data.id as string)
-          setForm({
-            name:  (data.name as string) ?? '',
-            phone: (data.phone as string) ?? '',
-            email: (data.email as string) ?? '',
-          })
-        }
-        setLoading(false)
+    if (patient) {
+      setForm({
+        name:  patient.name ?? '',
+        phone: patient.phone ?? '',
+        email: patient.email ?? '',
       })
-  }, [session])
+    }
+  }, [patient])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!patientId) return
-    setSaving(true)
-    const { error } = await supabase
-      .from('patients')
-      .update({ name: form.name, phone: form.phone, email: form.email })
-      .eq('id', patientId)
-    if (error) {
-      toast.error('Erro ao salvar perfil.')
-    } else {
+    try {
+      await updatePatient({ name: form.name, phone: form.phone, email: form.email })
       toast.success('Perfil atualizado!')
+    } catch {
+      toast.error('Erro ao salvar perfil.')
     }
-    setSaving(false)
   }
 
   if (loading) {
     return <p className="text-center text-gray-400 text-sm py-12">Carregando...</p>
   }
 
-  if (!patientId) {
+  if (!patient) {
     return (
       <p className="text-center text-gray-400 text-sm py-12">
         Nenhum cadastro de paciente vinculado à sua conta.
@@ -104,10 +85,10 @@ export default function MeuPerfilPage() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={updating}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition disabled:opacity-50"
           >
-            {saving ? 'Salvando...' : 'Salvar alterações'}
+            {updating ? 'Salvando...' : 'Salvar alterações'}
           </button>
         </form>
       </div>

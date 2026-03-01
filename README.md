@@ -1,10 +1,10 @@
-# Clínica Tool
+# Consultin
 
 Plataforma de gestão para pequenas clínicas brasileiras.
 
 ## Sobre o Projeto
 
-O **Clínica Tool** é uma solução completa de gerenciamento voltada para pequenas clínicas e consultórios no Brasil. O objetivo é centralizar e simplificar as operações do dia a dia, oferecendo controle eficiente de agenda, pacientes e demais necessidades administrativas.
+O **Consultin** é uma solução completa de gerenciamento voltada para pequenas clínicas e consultórios no Brasil. O objetivo é centralizar e simplificar as operações do dia a dia, oferecendo controle eficiente de agenda, pacientes e demais necessidades administrativas.
 
 ## Funcionalidades Previstas
 

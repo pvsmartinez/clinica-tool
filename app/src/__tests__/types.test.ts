@@ -78,10 +78,14 @@ describe('ROLE_PERMISSIONS', () => {
     expect(ROLE_PERMISSIONS).toHaveProperty('patient')
   })
 
-  it('admin has all permissions true', () => {
+  it('admin has all permissions true except canManageOwnAvailability', () => {
     const perms = ROLE_PERMISSIONS.admin
-    for (const [, v] of Object.entries(perms)) {
-      expect(v).toBe(true)
+    for (const [k, v] of Object.entries(perms)) {
+      if (k === 'canManageOwnAvailability') {
+        expect(v).toBe(false)
+      } else {
+        expect(v).toBe(true)
+      }
     }
   })
 

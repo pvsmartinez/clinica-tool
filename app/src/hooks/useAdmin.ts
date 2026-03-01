@@ -1,15 +1,54 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../services/supabase'
-import type { Clinic, UserRole } from '../types'
+import { mapClinic } from '../utils/mappers'
+import type { UserRole } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface AdminUserProfile {
   id: string
   name: string
-  role: UserRole
+  roles: UserRole[]
   clinicId: string | null
   clinicName: string | null
   isSuperAdmin: boolean
+}
+
+/** Usuário completo (auth + perfil) retornado pela edge function */
+export interface AdminAuthUser {
+  id: string
+  email: string
+  createdAt: string
+  lastSignIn: string | null
+  confirmed: boolean
+  name: string | null
+  roles: UserRole[] | null
+  clinicId: string | null
+  clinicName: string | null
+  isSuperAdmin: boolean
+  hasProfile: boolean
+}
+
+async function callAdminFn<T>(
+  path: string,
+  options?: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown },
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke<T>(`admin-users${path}`, {
+    method: options?.method ?? 'GET',
+    body:   options?.body ?? undefined,
+  })
+  if (error) {
+    // Try to pull the JSON error message from the response body
+    let msg = error.message
+    try {
+      const ctx = (error as unknown as { context?: Response }).context
+      if (ctx) {
+        const json = await ctx.json() as { error?: string }
+        if (json?.error) msg = json.error
+      }
+    } catch { /* ignore — fallback to error.message */ }
+    throw new Error(msg)
+  }
+  return data as T
 }
 
 // ─── All clinics (no RLS filter — super admin sees everything) ─────────────────
@@ -22,20 +61,7 @@ export function useAdminClinics() {
         .select('*')
         .order('created_at', { ascending: false })
       if (error) throw error
-      return (data ?? []).map(r => ({
-        id:                   r.id as string,
-        name:                 r.name as string,
-        cnpj:                 r.cnpj as string | null,
-        phone:                r.phone as string | null,
-        email:                r.email as string | null,
-        address:              r.address as string | null,
-        city:                 r.city as string | null,
-        state:                r.state as string | null,
-        slotDurationMinutes:  (r.slot_duration_minutes as number) ?? 30,
-        workingHours:         r.working_hours ?? {},
-        customPatientFields:  r.custom_patient_fields ?? [],
-        createdAt:            r.created_at as string,
-      } satisfies Clinic))
+      return (data ?? []).map(row => mapClinic(row as Record<string, unknown>))
     },
   })
 }
@@ -65,7 +91,7 @@ export function useAdminProfiles() {
     queryFn: async () => {
       const { data: profiles, error } = await supabase
         .from('user_profiles')
-        .select('id, name, role, clinic_id, is_super_admin')
+        .select('id, name, roles, clinic_id, is_super_admin')
         .order('name')
       if (error) throw error
 
@@ -80,7 +106,7 @@ export function useAdminProfiles() {
       return (profiles ?? []).map(p => ({
         id:          p.id as string,
         name:        p.name as string,
-        role:        p.role as UserRole,
+        roles:       (p.roles as UserRole[]) ?? [],
         clinicId:    p.clinic_id as string | null,
         clinicName:  p.clinic_id ? (clinicNames[p.clinic_id] ?? 'Clínica desconhecida') : null,
         isSuperAdmin: (p.is_super_admin as boolean) ?? false,
@@ -93,19 +119,22 @@ export function useAdminProfiles() {
 export function useUpsertProfile() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { id: string; name: string; role: UserRole; clinicId: string | null; isSuperAdmin: boolean }) => {
+    mutationFn: async (input: { id: string; name: string; roles: UserRole[]; clinicId: string | null; isSuperAdmin: boolean }) => {
       const { error } = await supabase
         .from('user_profiles')
         .upsert({
           id: input.id,
           name: input.name,
-          role: input.role,
+          roles: input.roles,
           clinic_id: input.clinicId,
           is_super_admin: input.isSuperAdmin,
         })
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'profiles'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'profiles'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'auth-users'] })
+    },
   })
 }
 
@@ -179,6 +208,202 @@ export function useAdminOverview() {
         totalAppointments: totalAppts ?? 0,
         perClinic,
       }
+    },
+  })
+}
+
+// ─── Auth users list (via edge function, service role) ────────────────────────
+export function useAdminAuthUsers() {
+  return useQuery<AdminAuthUser[]>({
+    queryKey: ['admin', 'auth-users'],
+    queryFn: () => callAdminFn<AdminAuthUser[]>(''),
+  })
+}
+
+// ─── Create auth user with password ──────────────────────────────────────────
+export function useCreateAuthUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      email: string
+      password: string
+      name: string
+      role: UserRole
+      clinicId: string | null
+      isSuperAdmin: boolean
+    }) => callAdminFn<{ id: string; email: string }>('/create', { method: 'POST', body: input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'auth-users'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'profiles'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+    },
+  })
+}
+
+// ─── Invite user by email (no password needed) ────────────────────────────────
+export function useInviteUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      email: string
+      name: string
+      role: UserRole
+      clinicId: string | null
+      isSuperAdmin: boolean
+    }) => callAdminFn<{ id: string; email: string }>('/invite', { method: 'POST', body: input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'auth-users'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'profiles'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+    },
+  })
+}
+
+// ─── Resend invite email to pending (unconfirmed) user ───────────────────────
+export function useResendInvite() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) =>
+      callAdminFn<{ resent: string }>('/resend-invite', { method: 'POST', body: { userId } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'auth-users'] }),
+  })
+}
+
+// ─── Delete auth user ─────────────────────────────────────────────────────────
+export function useDeleteAuthUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) =>
+      callAdminFn<{ deleted: string }>(`/${userId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'auth-users'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'profiles'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+    },
+  })
+}
+
+// ─── Reset user password ──────────────────────────────────────────────────────
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password: string }) =>
+      callAdminFn<{ updated: string }>(`/${userId}/password`, { method: 'PATCH', body: { password } }),
+  })
+}
+
+// ─── Clinic signup requests ───────────────────────────────────────────────────
+export interface ClinicSignupRequest {
+  id:              string
+  name:            string
+  cnpj:            string | null
+  phone:           string | null
+  email:           string
+  responsibleName: string
+  message:         string | null
+  status:          'pending' | 'approved' | 'rejected'
+  createdAt:       string
+}
+
+export function useSignupRequests() {
+  return useQuery<ClinicSignupRequest[]>({
+    queryKey: ['admin', 'signup-requests'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clinic_signup_requests')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []).map(r => ({
+        id:              r.id as string,
+        name:            r.name as string,
+        cnpj:            r.cnpj as string | null,
+        phone:           r.phone as string | null,
+        email:           r.email as string,
+        responsibleName: r.responsible_name as string,
+        message:         r.message as string | null,
+        status:          r.status as ClinicSignupRequest['status'],
+        createdAt:       r.created_at as string,
+      }))
+    },
+  })
+}
+
+export function useApproveSignupRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      callAdminFn<{ clinicId: string; userId: string }>('/approve-signup', {
+        method: 'POST',
+        body: { requestId },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'signup-requests'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'clinics'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+    },
+  })
+}
+
+export function useRejectSignupRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      callAdminFn<{ rejected: string }>('/reject-signup', {
+        method: 'POST',
+        body: { requestId },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'signup-requests'] })
+    },
+  })
+}
+
+// ─── Update clinic details ────────────────────────────────────────────────────
+export function useUpdateClinic() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      id: string
+      name: string
+      cnpj?: string
+      phone?: string
+      email?: string
+      city?: string
+      state?: string
+    }) => {
+      const { error } = await supabase
+        .from('clinics')
+        .update({
+          name:  input.name,
+          cnpj:  input.cnpj  || null,
+          phone: input.phone || null,
+          email: input.email || null,
+          city:  input.city  || null,
+          state: input.state || null,
+        })
+        .eq('id', input.id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'clinics'] }),
+  })
+}
+
+// ─── Enter a clinic as super admin (test mode) ────────────────────────────────
+// Sets clinic_id on own profile → navigate to /dashboard → app behaves as clinic admin.
+// Pass clinicId = null to exit test mode.
+export function useEnterClinic() {
+  return useMutation({
+    mutationFn: async ({ userId, clinicId }: { userId: string; clinicId: string | null }) => {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ clinic_id: clinicId })
+        .eq('id', userId)
+      if (error) throw error
+      // Clear profile localStorage cache so next load fetches fresh data
+      localStorage.removeItem('consultin_profile_cache')
+    },
+    onSuccess: (_data, vars) => {
+      window.location.href = vars.clinicId ? '/dashboard' : '/admin'
     },
   })
 }

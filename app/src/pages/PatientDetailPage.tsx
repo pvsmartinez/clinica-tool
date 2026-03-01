@@ -4,6 +4,7 @@ import { usePatient } from '../hooks/usePatients'
 import { usePatientAppointments } from '../hooks/useAppointments'
 import Badge from '../components/ui/Badge'
 import { formatDate, formatDateTime } from '../utils/date'
+import PatientRecordsPanel from '../components/patients/PatientRecordsPanel'
 import {
   SEX_LABELS,
   APPOINTMENT_STATUS_LABELS,
@@ -109,7 +110,7 @@ export default function PatientDetailPage() {
         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <InfoRow label="CPF" value={patient.cpf} />
           <InfoRow label="RG" value={patient.rg} />
-          <InfoRow label="Data de nacimento" value={patient.birthDate ? formatDate(patient.birthDate + 'T00:00:00') : null} />
+          <InfoRow label="Data de nascimento" value={patient.birthDate ? formatDate(patient.birthDate + 'T00:00:00') : null} />
         </dl>
       </Section>
 
@@ -168,6 +169,11 @@ export default function PatientDetailPage() {
             ))}
           </ul>
         )}
+      </Section>
+
+      {/* Anotações e Anexos */}
+      <Section title="Anotações e Exames">
+        <PatientRecordsPanel patientId={id!} />
       </Section>
     </div>
   )

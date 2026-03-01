@@ -21,3 +21,12 @@ export function parseCurrency(value: string): number {
 export function centavosToReais(centavos: number): number {
   return centavos / 100
 }
+
+/**
+ * Null-safe formatter: formats centavos as "R$ 0,00".
+ * Returns "—" for null/undefined (used in financial tables and KPIs).
+ */
+export function formatBRL(cents: number | null | undefined): string {
+  if (cents == null) return '—'
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100)
+}

@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, Trash } from '@phosphor-icons/react'
+import { X, Trash, RepeatOnce, Warning } from '@phosphor-icons/react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { format, parseISO, addMinutes } from 'date-fns'
+import { format, parseISO, addMinutes, addDays, addWeeks, addMonths } from 'date-fns'
+import { fromZonedTime } from 'date-fns-tz'
 import Input from '../ui/Input'
 import TextArea from '../ui/TextArea'
 import { useProfessionals } from '../../hooks/useProfessionals'
 import { useAppointmentMutations } from '../../hooks/useAppointmentsMutations'
 import { usePatients } from '../../hooks/usePatients'
+import { useRooms } from '../../hooks/useRooms'
 import {
   APPOINTMENT_STATUS_LABELS,
   type Appointment,
@@ -19,23 +22,44 @@ import {
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 const schema = z.object({
-  patientId: z.string().min(1, 'Selecione um paciente'),
-  professionalId: z.string().min(1, 'Selecione um profissional'),
-  date: z.string().min(1, 'Data obrigatória'),
-  startTime: z.string().min(1, 'Horário obrigatório'),
-  durationMin: z.string(),
-  status: z.string(),
-  notes: z.string().optional(),
-  chargeAmount: z.string().optional(),
+  patientId:        z.string().min(1, 'Selecione um paciente'),
+  professionalId:   z.string().min(1, 'Selecione um profissional'),
+  date:             z.string().min(1, 'Data obrigatória'),
+  startTime:        z.string().min(1, 'Horário obrigatório'),
+  durationMin:      z.string(),
+  status:           z.string(),
+  notes:            z.string().optional(),
+  roomId:           z.string().optional(),
+  chargeAmount:     z.string().optional(),
+  professionalFee:  z.string().optional(),
+  recurrenceType:   z.enum(['none', 'daily', 'weekly', 'monthly']),
+  recurrenceCount:  z.string(),
 })
 type FormValues = z.infer<typeof schema>
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const DURATIONS = [15, 20, 30, 45, 60, 90, 120]
+const PRESET_DURATIONS = [15, 20, 30, 45, 60, 90, 120]
 const STATUSES = Object.entries(APPOINTMENT_STATUS_LABELS) as [AppointmentStatus, string][]
 
+const RECURRENCE_LABELS: Record<string, string> = {
+  none:    'Não repetir',
+  daily:   'Diariamente',
+  weekly:  'Semanalmente',
+  monthly: 'Mensalmente',
+}
+
 function toUTC(date: string, time: string): string {
-  return new Date(`${date}T${time}:00`).toISOString()
+  return fromZonedTime(`${date}T${time}:00`, 'America/Sao_Paulo').toISOString()
+}
+
+function addRecurrenceInterval(
+  date: Date,
+  type: 'daily' | 'weekly' | 'monthly',
+  n: number,
+): Date {
+  if (type === 'daily')  return addDays(date, n)
+  if (type === 'weekly') return addWeeks(date, n)
+  return addMonths(date, n)
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -43,84 +67,123 @@ interface Props {
   open: boolean
   onClose: () => void
   appointment?: Appointment | null
-  /** Pre-fill date + time when clicking a slot on the calendar */
-  initialDate?: string   // YYYY-MM-DD
-  initialTime?: string   // HH:MM
+  /** Pre-fill date + time when clicking/dragging a slot on the calendar */
+  initialDate?: string        // YYYY-MM-DD
+  initialTime?: string        // HH:MM
+  initialDurationMin?: number // from drag selection
   /** Default professional from calendar column */
   initialProfessionalId?: string
 }
 
 export default function AppointmentModal({
   open, onClose, appointment,
-  initialDate, initialTime, initialProfessionalId,
+  initialDate, initialTime, initialDurationMin, initialProfessionalId,
 }: Props) {
   const isEditing = !!appointment
   const { data: professionals = [] } = useProfessionals()
   const { patients = [] } = usePatients('')
   const { create, update, cancel } = useAppointmentMutations()
+  const { data: rooms = [] } = useRooms()
   const [confirmCancel, setConfirmCancel] = useState(false)
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { durationMin: '30', status: 'scheduled' },
+    defaultValues: { durationMin: '30', status: 'scheduled', recurrenceType: 'none', recurrenceCount: '4' },
   })
+
+  const recurrenceType  = watch('recurrenceType')
+  const recurrenceCount = watch('recurrenceCount')
+  const durationMinVal  = watch('durationMin')
+
+  // Build duration options — include any custom value from drag selection or existing appointment
+  const durationOptions = useMemo(() => {
+    const custom = durationMinVal ? parseInt(durationMinVal) : null
+    const extra  = custom && !PRESET_DURATIONS.includes(custom) ? [custom] : []
+    return [...new Set([...PRESET_DURATIONS, ...extra])].sort((a, b) => a - b)
+  }, [durationMinVal])
 
   useEffect(() => {
     if (!open) { setConfirmCancel(false); return }
 
     if (appointment) {
-      const start = parseISO(appointment.startsAt)
-      const end = parseISO(appointment.endsAt)
-      const diffMin = Math.round((end.getTime() - start.getTime()) / 60000)
+      const start   = parseISO(appointment.startsAt)
+      const end     = parseISO(appointment.endsAt)
+      const diffMin = Math.max(15, Math.round((end.getTime() - start.getTime()) / 60000))
       reset({
-        patientId: appointment.patientId,
-        professionalId: appointment.professionalId,
-        date: format(start, 'yyyy-MM-dd'),
-        startTime: format(start, 'HH:mm'),
-        durationMin: String(DURATIONS.includes(diffMin) ? diffMin : 30),
-        status: appointment.status,
-        notes: appointment.notes ?? '',
-        chargeAmount: appointment.chargeAmountCents != null
-          ? (appointment.chargeAmountCents / 100).toFixed(2).replace('.', ',')
-          : '',
+        patientId:       appointment.patientId,
+        professionalId:  appointment.professionalId,
+        date:            format(start, 'yyyy-MM-dd'),
+        startTime:       format(start, 'HH:mm'),
+        durationMin:     String(diffMin),
+        status:          appointment.status,
+        notes:           appointment.notes ?? '',
+        roomId:          appointment.roomId ?? '',
+        chargeAmount:    appointment.chargeAmountCents != null
+                           ? (appointment.chargeAmountCents / 100).toFixed(2).replace('.', ',')
+                           : '',
+        professionalFee: appointment.professionalFeeCents != null
+                           ? (appointment.professionalFeeCents / 100).toFixed(2).replace('.', ',')
+                           : '',
+        recurrenceType:  'none',
+        recurrenceCount: '4',
       })
     } else {
       reset({
-        patientId: '',
-        professionalId: initialProfessionalId ?? '',
-        date: initialDate ?? format(new Date(), 'yyyy-MM-dd'),
-        startTime: initialTime ?? '08:00',
-        durationMin: '30',
-        status: 'scheduled',
-        notes: '',
-        chargeAmount: '',
+        patientId:       '',
+        professionalId:  initialProfessionalId ?? '',
+        date:            initialDate ?? format(new Date(), 'yyyy-MM-dd'),
+        startTime:       initialTime ?? '08:00',
+        durationMin:     String(initialDurationMin ?? 30),
+        status:          'scheduled',
+        notes:           '',
+        roomId:          '',
+        chargeAmount:    '',
+        professionalFee: '',
+        recurrenceType:  'none',
+        recurrenceCount: '4',
       })
     }
-  }, [open, appointment, initialDate, initialTime, initialProfessionalId, reset])
+  }, [open, appointment, initialDate, initialTime, initialDurationMin, initialProfessionalId, reset])
 
   async function onSubmit(values: FormValues) {
     try {
-      const startsAt = toUTC(values.date, values.startTime)
-      const endsAt = addMinutes(new Date(startsAt), parseInt(values.durationMin)).toISOString()
+      const durationMin = parseInt(values.durationMin)
+      const startsAt    = toUTC(values.date, values.startTime)
+      const endsAt      = addMinutes(new Date(startsAt), durationMin).toISOString()
       const chargeAmountCents = values.chargeAmount
         ? Math.round(parseFloat(values.chargeAmount.replace(',', '.')) * 100)
         : null
+      const professionalFeeCents = values.professionalFee
+        ? Math.round(parseFloat(values.professionalFee.replace(',', '.')) * 100)
+        : null
 
-      const payload = {
-        patientId: values.patientId,
-        professionalId: values.professionalId,
-        startsAt,
-        endsAt,
-        status: values.status as AppointmentStatus,
-        notes: values.notes || null,
+      const basePayload = {
+        patientId:           values.patientId,
+        professionalId:      values.professionalId,
+        status:              values.status as AppointmentStatus,
+        notes:               values.notes || null,
+        roomId:              values.roomId || null,
         chargeAmountCents,
+        professionalFeeCents,
       }
 
       if (isEditing) {
-        await update.mutateAsync({ id: appointment!.id, ...payload })
+        await update.mutateAsync({ id: appointment!.id, ...basePayload, startsAt, endsAt })
         toast.success('Consulta atualizada')
+      } else if (values.recurrenceType !== 'none') {
+        // Create all recurring appointments concurrently to avoid serial blocking
+        const count = Math.min(Math.max(parseInt(values.recurrenceCount) || 1, 1), 52)
+        const type  = values.recurrenceType
+        const creates = Array.from({ length: count }, (_, i) => {
+          const s = addRecurrenceInterval(new Date(startsAt), type, i).toISOString()
+          const e = addMinutes(new Date(s), durationMin).toISOString()
+          return create.mutateAsync({ ...basePayload, startsAt: s, endsAt: e })
+        })
+        const results = await Promise.allSettled(creates)
+        const created = results.filter(r => r.status === 'fulfilled').length
+        toast.success(`${created} de ${count} consultas agendadas`)
       } else {
-        await create.mutateAsync(payload)
+        await create.mutateAsync({ ...basePayload, startsAt, endsAt })
         toast.success('Consulta agendada')
       }
       onClose()
@@ -128,6 +191,8 @@ export default function AppointmentModal({
       const msg = err instanceof Error ? err.message : ''
       if (msg.includes('no_overlap')) {
         toast.error('Conflito de horário — profissional já tem consulta nesse horário')
+      } else if (msg.includes('room_overlap')) {
+        toast.error('Conflito de sala — já existe consulta nessa sala nesse horário')
       } else {
         toast.error('Erro ao salvar consulta')
       }
@@ -146,6 +211,8 @@ export default function AppointmentModal({
   }
 
   const activeProfessionals = professionals.filter(p => p.active)
+  const hasNoProfessionals  = !isEditing && activeProfessionals.length === 0
+  const hasNoPatients       = !isEditing && patients.length === 0
 
   return (
     <Dialog.Root open={open} onOpenChange={v => !v && onClose()}>
@@ -161,6 +228,36 @@ export default function AppointmentModal({
               <button className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </Dialog.Close>
           </div>
+
+          {/* Empty-state warnings — shown only when creating and clinic is fresh */}
+          {(hasNoProfessionals || hasNoPatients) && (
+            <div className="mb-4 space-y-2">
+              {hasNoProfessionals && (
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                  <Warning size={16} className="shrink-0 mt-0.5" />
+                  <span>
+                    Nenhum profissional cadastrado.{' '}
+                    <Link to="/profissionais" onClick={onClose}
+                      className="font-semibold underline hover:text-amber-900">
+                      Cadastrar agora →
+                    </Link>
+                  </span>
+                </div>
+              )}
+              {hasNoPatients && (
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                  <Warning size={16} className="shrink-0 mt-0.5" />
+                  <span>
+                    Nenhum paciente cadastrado.{' '}
+                    <Link to="/pacientes/novo" onClick={onClose}
+                      className="font-semibold underline hover:text-amber-900">
+                      Cadastrar agora →
+                    </Link>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
@@ -206,35 +303,99 @@ export default function AppointmentModal({
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   {...register('durationMin')}
                 >
-                  {DURATIONS.map(d => (
+                  {durationOptions.map(d => (
                     <option key={d} value={d}>{d} min</option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                {...register('status')}
-              >
-                {STATUSES.map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
+            {/* Room + Status */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sala / consultório</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  {...register('roomId')}
+                >
+                  <option value="">Sem sala definida</option>
+                  {rooms.filter(r => r.active).map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  {...register('status')}
+                >
+                  {STATUSES.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Charge */}
-            <Input
-              label="Valor cobrado (R$)"
-              placeholder="0,00"
-              {...register('chargeAmount')}
-            />
+            {/* Charge + Professional fee */}
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Valor cobrado (R$)"
+                placeholder="0,00"
+                {...register('chargeAmount')}
+              />
+              <Input
+                label="Repasse ao profissional (R$)"
+                placeholder="0,00"
+                {...register('professionalFee')}
+              />
+            </div>
 
             {/* Notes */}
             <TextArea label="Observações" rows={2} {...register('notes')} />
+
+            {/* Recurrence (only for new appointments) */}
+            {!isEditing && (
+              <div className="rounded-xl border border-gray-200 p-3 space-y-3 bg-gray-50">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <RepeatOnce size={16} className="text-gray-400" />
+                  Repetição
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Frequência</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      {...register('recurrenceType')}
+                    >
+                      {Object.entries(RECURRENCE_LABELS).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {recurrenceType !== 'none' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Repetir (nº de ocorrências)
+                      </label>
+                      <input
+                        type="number"
+                        min={2}
+                        max={52}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        {...register('recurrenceCount')}
+                      />
+                    </div>
+                  )}
+                </div>
+                {recurrenceType !== 'none' && (
+                  <p className="text-xs text-blue-600">
+                    Serão criadas <strong>{Math.min(Math.max(parseInt(recurrenceCount) || 1, 1), 52)}</strong> consultas{' '}
+                    {RECURRENCE_LABELS[recurrenceType].toLowerCase().replace('mente', '')}.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-2">

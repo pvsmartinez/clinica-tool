@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../services/supabase'
+import { useAuthContext } from '../contexts/AuthContext'
 import type { AvailabilitySlot } from '../types'
 
 function mapRow(r: Record<string, unknown>): AvailabilitySlot {
@@ -14,8 +15,9 @@ function mapRow(r: Record<string, unknown>): AvailabilitySlot {
   }
 }
 
-export function useAvailabilitySlots(professionalId: string) {
+export function useAvailabilitySlots(professionalId: string, clinicIdOverride?: string) {
   const qc = useQueryClient()
+  const { profile } = useAuthContext()
   const key = ['availability-slots', professionalId]
 
   const query = useQuery({
@@ -35,27 +37,40 @@ export function useAvailabilitySlots(professionalId: string) {
 
   const upsert = useMutation({
     mutationFn: async (slots: Omit<AvailabilitySlot, 'id' | 'clinicId'>[]) => {
-      // Delete all existing for this professional then insert new set
-      const { error: delError } = await supabase
+      // Fetch existing IDs BEFORE modifying anything.
+      // Strategy: insert new first → if that fails, old slots remain intact.
+      // Then delete by the pre-fetched IDs → if that fails we have duplicates
+      // but never a "zero availability" window.
+      const { data: existing } = await supabase
         .from('availability_slots')
-        .delete()
+        .select('id')
         .eq('professional_id', professionalId)
-      if (delError) throw delError
+      const existingIds = (existing ?? []).map(r => r.id as string)
 
-      if (slots.length === 0) return
+      if (slots.length > 0) {
+        const { error: insError } = await supabase
+          .from('availability_slots')
+          .insert(
+            slots.map(s => ({
+              clinic_id:       clinicIdOverride ?? profile!.clinicId!,
+              professional_id: professionalId,
+              weekday:         s.weekday,
+              start_time:      s.startTime,
+              end_time:        s.endTime,
+              active:          s.active,
+            }))
+          )
+        if (insError) throw insError
+      }
 
-      const { error: insError } = await supabase
-        .from('availability_slots')
-        .insert(
-          slots.map(s => ({
-            professional_id: professionalId,
-            weekday:         s.weekday,
-            start_time:      s.startTime,
-            end_time:        s.endTime,
-            active:          s.active,
-          }))
-        )
-      if (insError) throw insError
+      // Only delete old records after new ones are safely inserted
+      if (existingIds.length > 0) {
+        const { error: delError } = await supabase
+          .from('availability_slots')
+          .delete()
+          .in('id', existingIds)
+        if (delError) throw delError
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   })

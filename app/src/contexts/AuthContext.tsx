@@ -26,7 +26,11 @@ const PROFILE_CACHE_KEY = 'consultin_profile_cache'
 function getCachedProfile(): UserProfile | null {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_KEY)
-    return raw ? (JSON.parse(raw) as UserProfile) : null
+    if (!raw) return null
+    const p = JSON.parse(raw) as UserProfile
+    // Invalidate cache from before the role→roles migration
+    if (!Array.isArray(p.roles)) { localStorage.removeItem(PROFILE_CACHE_KEY); return null }
+    return p
   } catch { return null }
 }
 
@@ -38,8 +42,10 @@ function setCachedProfile(p: UserProfile | null) {
 }
 
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
+  // Must be shorter than the outer auth safety timeout (3 000 ms) so it
+  // actually fires and the catch branch can decide what to show.
   const timeout = new Promise<null>((_, reject) =>
-    setTimeout(() => reject(new Error('fetchProfile timeout')), 4000)
+    setTimeout(() => reject(new Error('fetchProfile timeout')), 2500)
   )
   const query = supabase
     .from('user_profiles')

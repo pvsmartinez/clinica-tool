@@ -26,29 +26,89 @@ A multi-tenant clinic management system covering:
 
 ---
 
+## Product Concept — Simplest Possible Tool for Any Clinic
+
+Consultin is designed to be **the simplest possible clinic management tool** — highly
+customizable so each clinic only sees what it actually needs. No clutter, no "enterprise"
+features forced on a 2-dentist office.
+
+### Clinic Setup Wizard (Onboarding)
+
+When a clinic is freshly created (`clinics.onboarding_completed = false`), the app
+redirects to `/onboarding` instead of `/dashboard`. This is a **linear 5-step wizard**
+shown exactly once. After completion, `onboarding_completed` is set to `true`.
+
+The wizard is **backed by the same components as `SettingsPage`** — same config blobs,
+same DB calls — just presented as a guided first-time flow with a friendly framing.
+Every step can be revisited at any time via `/configuracoes`.
+
+**Wizard steps:**
+
+| #   | Step                      | What happens                                                                                                                                                                   |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Bem-vindo**             | Confirm/edit clinic name, CNPJ, phone, e-mail, address. Future placeholder for billing/subscription info.                                                                      |
+| 2   | **Sua equipe**            | Toggle which built-in professional fields the clinic needs (specialty, council ID, phone, email). Add custom professional fields (e.g. "Registro CREMERS", "Área de atuação"). |
+| 3   | **Cadastro de pacientes** | Toggle built-in patient fields (CPF, RG, address, etc.). Add custom patient fields for the clinic's specialty (e.g. "Convênio", "Alergias", "Nº prontuário").                  |
+| 4   | **Agendamentos**          | Slot duration (15/20/30/45/60 min) + working days/hours per day.                                                                                                               |
+| 5   | **Pronto!**               | Summary + CTA "Abrir minha agenda". Sets `onboarding_completed = true`.                                                                                                        |
+
+### Field Customization Architecture
+
+Every registration form respects two config blobs stored in `clinics`:
+
+```
+clinics.patient_field_config        JSONB  — Record<fieldKey, boolean>  (built-in toggles)
+clinics.custom_patient_fields       JSONB  — CustomFieldDef[]            (extra fields)
+clinics.professional_field_config   JSONB  — Record<fieldKey, boolean>
+clinics.custom_professional_fields  JSONB  — CustomFieldDef[]
+```
+
+Built-in fields default to **visible** when the key is absent. The clinic disables
+a field by setting `fieldKey: false`. Custom fields are appended under "Informações
+adicionais".
+
+**`CustomFieldDef` types:** `text | number | date | select | multiselect | boolean`
+
+For `select` and `multiselect`, `options: string[]` holds the choices.
+Values are stored as `unknown` (scalar or `string[]`) in the JSONB `custom_fields`
+column of the `patients` / `professionals` row.
+
+### Routing Guard
+
+```
+After login:
+  clinic.onboardingCompleted === false  →  redirect to /onboarding
+  clinic.onboardingCompleted === true   →  redirect to /dashboard
+```
+
+The `/onboarding` route redirects to `/dashboard` if already completed.
+Implemented as a guard in `App.tsx` or `AuthContext`.
+
+---
+
 ## Target Platforms
 
-| Platform | Priority | Notes |
-|---|---|---|
-| Web (browser) | Primary | Any browser, mobile-responsive |
-| Desktop (macOS/Windows) | Secondary | Tauri v2 wrapper — same codebase |
-| Mobile app | Future phase | React Native (Expo) |
+| Platform                | Priority     | Notes                            |
+| ----------------------- | ------------ | -------------------------------- |
+| Web (browser)           | Primary      | Any browser, mobile-responsive   |
+| Desktop (macOS/Windows) | Secondary    | Tauri v2 wrapper — same codebase |
+| Mobile app              | Future phase | React Native (Expo)              |
 
 ---
 
 ## Technical Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 19 + TypeScript + Vite |
-| Styling | Tailwind CSS v3 |
-| Routing | React Router v7 |
-| Icons | Phosphor Icons |
-| Desktop shell | Tauri v2 (Rust) |
-| Backend / DB | Supabase (PostgreSQL + Auth + Storage + RLS) |
-| DB client | `@supabase/supabase-js` v2 |
-| Date handling | `date-fns` + `date-fns-tz` (TZ: `America/Sao_Paulo`) |
-| Money | Centavos (integer) in DB; formatted as `R$ 0,00` in UI |
+| Layer         | Technology                                             |
+| ------------- | ------------------------------------------------------ |
+| Frontend      | React 19 + TypeScript + Vite                           |
+| Styling       | Tailwind CSS v3                                        |
+| Routing       | React Router v7                                        |
+| Icons         | Phosphor Icons                                         |
+| Desktop shell | Tauri v2 (Rust)                                        |
+| Backend / DB  | Supabase (PostgreSQL + Auth + Storage + RLS)           |
+| DB client     | `@supabase/supabase-js` v2                             |
+| Date handling | `date-fns` + `date-fns-tz` (TZ: `America/Sao_Paulo`)   |
+| Money         | Centavos (integer) in DB; formatted as `R$ 0,00` in UI |
 
 ---
 
@@ -56,35 +116,86 @@ A multi-tenant clinic management system covering:
 
 ```
 consultin/
-|-- app/                          # Tauri v2 + React app
-│   ├── src/
-│   │   ├── components/
-│   │   │   └── layout/
-│   │   │       └── AppLayout.tsx     # Sidebar + main layout
-│   │   ├── hooks/
-│   │   │   └── useAuth.ts            # Supabase auth state
-│   │   ├── pages/
-│   │   │   ├── LoginPage.tsx
-│   │   │   ├── DashboardPage.tsx
-│   │   │   ├── PatientsPage.tsx
-│   │   │   └── AppointmentsPage.tsx
-│   │   ├── services/
-│   │   │   └── supabase.ts           # Supabase client (singleton)
-│   │   ├── types/
-│   │   │   ├── index.ts              # Shared domain types
-│   │   │   └── database.ts           # Auto-generated — run: supabase gen types typescript
-│   │   └── utils/
-│   │       ├── validators.ts         # CPF, CNPJ, phone validation + formatters
-│   │       ├── currency.ts           # centavos ↔ R$ formatting
-│   │       └── date.ts               # date/time utils (pt-BR, America/Sao_Paulo)
-│   ├── src-tauri/                # Rust / Tauri shell
-│   └── .env.example              # Copy to .env and fill in Supabase keys
+├── app/                              # Tauri v2 + React frontend
+│   └── src/
+│       ├── App.tsx                   # Root: routing, auth guards, query client
+│       ├── contexts/
+│       │   └── AuthContext.tsx       # Auth state, profile, clinic, role/permissions
+│       ├── pages/
+│       │   ├── LoginPage.tsx
+│       │   ├── OnboardingPage.tsx    # 5-step wizard (runs once per clinic)
+│       │   ├── DashboardPage.tsx
+│       │   ├── AppointmentsPage.tsx  # Calendar views (day/week/month)
+│       │   ├── AgendarConsultaPage.tsx # Patient-facing booking
+│       │   ├── PatientsPage.tsx      # Patient list + search
+│       │   ├── PatientDetailPage.tsx # Individual patient + history
+│       │   ├── ProfessionalsPage.tsx
+│       │   ├── FinanceiroPage.tsx    # Payments + reports
+│       │   ├── RelatoriosPage.tsx
+│       │   ├── SettingsPage.tsx      # Clinic configuration (tabbed)
+│       │   ├── settings/             # Sub-tabs: Dados, Campos, Agenda,
+│       │   │                         #   Disponibilidade, Financeiro, Salas, WhatsApp
+│       │   ├── WhatsAppInboxPage.tsx
+│       │   ├── AdminPage.tsx         # Super-admin only
+│       │   ├── MeuPerfilPage.tsx
+│       │   ├── MyAppointmentsPage.tsx
+│       │   ├── CadastroPage.tsx
+│       │   └── AccessDeniedPage.tsx
+│       ├── components/
+│       │   ├── layout/
+│       │   │   ├── AppLayout.tsx     # Sidebar + main layout shell
+│       │   │   └── PatientPortalLayout.tsx
+│       │   ├── appointments/
+│       │   │   ├── AppointmentModal.tsx
+│       │   │   └── AppointmentPaymentModal.tsx
+│       │   ├── patients/
+│       │   │   └── PatientRecordsPanel.tsx
+│       │   ├── professionals/
+│       │   │   ├── ProfessionalModal.tsx
+│       │   │   └── ProfessionalBankAccountModal.tsx
+│       │   ├── auth/
+│       │   │   └── RequireAuth.tsx
+│       │   ├── ui/                   # Badge, Input, Select, TextArea, CustomFieldInput
+│       │   └── ImportModal.tsx
+│       ├── hooks/
+│       │   ├── usePatients.ts        # CRUD + search (React Query)
+│       │   ├── useAppointments.ts    # Read + filters
+│       │   ├── useAppointmentsMutations.ts  # Create/update/cancel
+│       │   ├── useAvailabilitySlots.ts
+│       │   ├── useAppointmentPayments.ts
+│       │   ├── useProfessionals.ts
+│       │   ├── useProfessionalBankAccount.ts
+│       │   ├── usePatientRecords.ts
+│       │   ├── useClinic.ts          # Clinic read + update
+│       │   ├── useFinancial.ts
+│       │   ├── useBilling.ts         # Asaas integration
+│       │   ├── useRooms.ts
+│       │   ├── useInvites.ts
+│       │   └── useAdmin.ts
+│       ├── services/
+│       │   ├── supabase.ts           # Supabase client singleton
+│       │   ├── asaas.ts              # Asaas payments API
+│       │   └── whatsapp.ts           # WhatsApp messaging
+│       ├── types/
+│       │   ├── index.ts              # Domain types (Patient, Appointment, etc.)
+│       │   └── database.ts           # Auto-generated: `supabase gen types typescript`
+│       └── utils/
+│           ├── validators.ts         # CPF, CNPJ, phone, CEP validation + formatters
+│           ├── currency.ts           # centavos ↔ R$ 0,00
+│           └── date.ts               # date/time utils (pt-BR, America/Sao_Paulo)
 ├── supabase/
-│   ├── migrations/               # SQL migrations — apply with: supabase db push
-│   │   └── 0001_initial_schema.sql
-│   └── seed.sql                  # Dev seed data — supabase db reset
-└── .github/
-    └── copilot-instructions.md   # Copilot coding guidelines
+│   ├── migrations/                   # SQL migrations — apply with apply-migrations.sh
+│   ├── functions/                    # Edge Functions (Deno)
+│   │   ├── admin-users/              # Super-admin user management
+│   │   ├── asaas/                    # Asaas API proxy
+│   │   ├── asaas-webhook/            # Asaas payment webhook
+│   │   ├── whatsapp-send/            # Send WhatsApp messages
+│   │   ├── whatsapp-reminders/       # Scheduled appointment reminders
+│   │   └── whatsapp-ai-agent/        # AI-powered WhatsApp bot
+│   └── seed.sql
+└── scripts/
+    ├── apply-migrations.sh           # Applies all migrations (reads password from pedrin/.env)
+    └── push-asaas-secrets.sh         # Pushes Asaas keys to Supabase secrets
 ```
 
 ---
@@ -144,6 +255,8 @@ supabase gen types typescript --linked > app/src/types/database.ts
 6. **Multi-tenancy** — every DB query is automatically scoped by Supabase RLS policies. Never manually filter by `clinic_id` from the client.
 7. **Typecheck** — run `npm run typecheck` after every non-trivial change. Zero errors is the bar.
 8. **Commits** — use Conventional Commits (`feat:`, `fix:`, `chore:`, etc.), messages in English.
+9. **Onboarding guard** — any new route/redirect logic must respect `clinic.onboardingCompleted`. Clinics with `false` must land on `/onboarding` first, never on `/dashboard` or feature pages.
+10. **Field visibility** — never render a built-in patient/professional form field without first checking `fieldConfig[key] !== false`. Always pass `customPatientFields` / `customProfessionalFields` from the clinic to the form component.
 
 ---
 

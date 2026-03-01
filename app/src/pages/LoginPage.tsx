@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Stethoscope } from '@phosphor-icons/react'
 import { Link } from 'react-router-dom'
 import { useAuthContext } from '../contexts/AuthContext'
+import { supabase } from '../services/supabase'
 
 // ─── Social icons (inline SVG — no extra deps) ───────────────────────────────
 const GoogleIcon = () => (
@@ -43,7 +44,6 @@ export default function LoginPage() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const { supabase } = await import('../services/supabase')
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/nova-senha`,
     })

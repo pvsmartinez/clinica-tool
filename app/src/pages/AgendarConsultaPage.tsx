@@ -1,0 +1,263 @@
+import { useState, useEffect, useMemo } from 'react'
+import { format, addDays, parseISO, addMinutes } from 'date-fns'
+import { fromZonedTime } from 'date-fns-tz'
+import { ptBR } from 'date-fns/locale'
+import { CalendarCheck, ArrowLeft } from '@phosphor-icons/react'
+import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '../services/supabase'
+import { useClinic } from '../hooks/useClinic'
+import { useAvailabilitySlots } from '../hooks/useAvailabilitySlots'
+import { useProfessionals } from '../hooks/useProfessionals'
+import { useAppointmentMutations } from '../hooks/useAppointmentsMutations'
+import { useMyPatient } from '../hooks/usePatients'
+
+export default function AgendarConsultaPage() {
+  const navigate = useNavigate()
+
+  const { data: clinic }  = useClinic()
+  const slotDuration      = clinic?.slotDurationMinutes ?? 30
+
+  const { patient: myPatient }                      = useMyPatient()
+  const { data: allProfessionals = [],
+          isLoading: loadingProfs }              = useProfessionals()
+  const professionals = allProfessionals.filter(p => p.active)
+  const { create }                               = useAppointmentMutations()
+
+  const [selectedProf, setSelectedProf]   = useState<string>('')
+  const [selectedDate, setSelectedDate]   = useState<string>('')
+  const [selectedTime, setSelectedTime]   = useState<string>('')
+  const [notes, setNotes]                 = useState<string>('')
+  const [saving, setSaving]               = useState(false)
+
+  const minDate = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+  const maxDate = format(addDays(new Date(), 90), 'yyyy-MM-dd')
+
+  // Booked appointments for selected prof+date — prevents double-booking occupied slots
+  const { data: bookedRanges = [], isLoading: loadingBooked } = useQuery({
+    queryKey: ['booked-slots', selectedProf, selectedDate],
+    enabled: !!selectedProf && !!selectedDate,
+    queryFn: async () => {
+      const TZ = 'America/Sao_Paulo'
+      const dayStartUTC = fromZonedTime(`${selectedDate}T00:00:00`, TZ).toISOString()
+      const dayEndUTC   = fromZonedTime(`${selectedDate}T23:59:59`, TZ).toISOString()
+      const { data } = await supabase
+        .from('appointments')
+        .select('starts_at, ends_at')
+        .eq('professional_id', selectedProf)
+        .gte('starts_at', dayStartUTC)
+        .lte('starts_at', dayEndUTC)
+        .neq('status', 'cancelled')
+      return (data ?? []).map(a => ({
+        startsMs: parseISO(a.starts_at as string).getTime(),
+        endsMs:   parseISO(a.ends_at   as string).getTime(),
+      }))
+    },
+  })
+
+  // Availability slots for the selected professional (React Query cache)
+  const { data: availSlots = [] } = useAvailabilitySlots(selectedProf)
+
+  // Fetch already-booked appointments when professional or date changes — now handled by useQuery above
+
+  // Derive available times from professional's weekly schedule for selectedDate
+  const availableTimes = useMemo(() => {
+    if (!selectedDate || !selectedProf || availSlots.length === 0) return []
+    const weekday = new Date(`${selectedDate}T12:00:00`).getDay() // 0=Sun…6=Sat
+    const daySlots = availSlots.filter(s => s.weekday === weekday && s.active)
+    if (daySlots.length === 0) return []
+    const times: string[] = []
+    for (const slot of daySlots) {
+      const [sh, sm] = slot.startTime.split(':').map(Number)
+      const [eh, em] = slot.endTime.split(':').map(Number)
+      let cur = sh * 60 + sm
+      const end = eh * 60 + em
+      while (cur + slotDuration <= end) {
+        times.push(
+          `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`
+        )
+        cur += slotDuration
+      }
+    }
+    return times
+  }, [selectedDate, selectedProf, availSlots, slotDuration])
+
+  // Returns true if a slot time string (HH:mm) overlaps with any booked appointment.
+  // Checks the FULL interval [slotStart, slotStart + slotDuration) — not just the start time.
+  function isSlotBooked(timeHHMM: string): boolean {
+    if (bookedRanges.length === 0 || !selectedDate) return false
+    const TZ = 'America/Sao_Paulo'
+    const slotStartMs = fromZonedTime(`${selectedDate}T${timeHHMM}:00`, TZ).getTime()
+    const slotEndMs   = slotStartMs + slotDuration * 60_000
+    return bookedRanges.some(r => r.startsMs < slotEndMs && r.endsMs > slotStartMs)
+  }
+
+  // Clear time choice whenever the prof or date changes
+  useEffect(() => { setSelectedTime('') }, [selectedProf, selectedDate])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!myPatient || !selectedProf || !selectedDate || !selectedTime) return
+
+    setSaving(true)
+
+    const TZ = 'America/Sao_Paulo'
+    const startsAt = fromZonedTime(`${selectedDate}T${selectedTime}:00`, TZ)
+    const endsAt   = addMinutes(startsAt, slotDuration)
+
+    try {
+      await create.mutateAsync({
+        patientId:      myPatient.id,
+        professionalId: selectedProf,
+        startsAt:       startsAt.toISOString(),
+        endsAt:         endsAt.toISOString(),
+        status:         'scheduled',
+        notes:          notes || null,
+      })
+      toast.success('Consulta agendada com sucesso!')
+      navigate('/minhas-consultas')
+    } catch (err) {
+      const code = (err as { code?: string }).code
+      if (code === '23P01') {
+        toast.error('Este horário já está ocupado. Escolha outro.')
+      } else {
+        toast.error('Erro ao agendar. Tente novamente.')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const selectedProfName = professionals.find(p => p.id === selectedProf)?.name ?? ''
+
+  return (
+    <div className="max-w-md mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate('/minhas-consultas')}
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <h1 className="text-lg font-semibold text-gray-800">Agendar Consulta</h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
+
+        {/* Professional */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Profissional</label>
+          {loadingProfs ? (
+            <p className="text-sm text-gray-400">Carregando profissionais...</p>
+          ) : professionals.length === 0 ? (
+            <p className="text-sm text-gray-400">Nenhum profissional disponível.</p>
+          ) : (
+            <select
+              required
+              value={selectedProf}
+              onChange={e => setSelectedProf(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Selecione um profissional</option>
+              {professionals.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.specialty ? ` — ${p.specialty}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Date */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+          <input
+            type="date"
+            required
+            value={selectedDate}
+            min={minDate}
+            max={maxDate}
+            onChange={e => setSelectedDate(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {selectedDate && (
+            <p className="text-xs text-gray-400 mt-1 capitalize">
+              {format(new Date(selectedDate + 'T12:00:00'), "EEEE, d 'de' MMMM", { locale: ptBR })}
+            </p>
+          )}
+        </div>
+
+        {/* Time — derived from professional's availability + clinic slot duration */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Horário</label>
+          {!selectedProf || !selectedDate ? (
+            <p className="text-xs text-gray-400">Selecione o profissional e a data para ver os horários.</p>
+          ) : loadingBooked ? (
+            <p className="text-xs text-gray-400">Carregando horários disponíveis...</p>
+          ) : availableTimes.length === 0 ? (
+            <p className="text-xs text-gray-400">Sem horários disponíveis nesta data. Tente outro dia.</p>
+          ) : (
+            <div className="grid grid-cols-5 gap-1.5">
+              {availableTimes.map(t => {
+                const booked = isSlotBooked(t)
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={booked}
+                    onClick={() => setSelectedTime(t)}
+                    className={`py-1.5 rounded-lg text-xs font-medium border transition ${
+                      booked
+                        ? 'border-gray-100 text-gray-300 bg-gray-50 cursor-not-allowed line-through'
+                        : selectedTime === t
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Observações <span className="text-gray-400 font-normal">(opcional)</span>
+          </label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={2}
+            placeholder="Ex: retorno, dor de dente..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          />
+        </div>
+
+        {/* Summary */}
+        {selectedProf && selectedDate && selectedTime && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-700 space-y-0.5">
+            <p className="font-medium flex items-center gap-1.5">
+              <CalendarCheck size={15} /> Resumo do agendamento
+            </p>
+            <p className="text-xs">
+              <span className="font-medium">{selectedProfName}</span> — {' '}
+              {format(new Date(selectedDate + 'T12:00:00'), "dd/MM/yyyy", { locale: ptBR })} às {selectedTime}
+            </p>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving || !selectedProf || !selectedDate || !selectedTime}
+          className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-semibold transition disabled:opacity-40"
+        >
+          {saving ? 'Agendando...' : 'Confirmar agendamento'}
+        </button>
+      </form>
+    </div>
+  )
+}

@@ -1,38 +1,107 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../services/supabase'
+import { useAuthContext } from '../contexts/AuthContext'
+import { mapAppointment } from '../utils/mappers'
 import type { Appointment } from '../types'
 
-function mapRow(row: Record<string, unknown>): Appointment {
-  return {
-    id:                row.id as string,
-    clinicId:          row.clinic_id as string,
-    patientId:         row.patient_id as string,
-    professionalId:    row.professional_id as string,
-    startsAt:          row.starts_at as string,
-    endsAt:            row.ends_at as string,
-    status:            row.status as Appointment['status'],
-    notes:             (row.notes as string) ?? null,
-    chargeAmountCents: (row.charge_amount_cents as number) ?? null,
-    paidAmountCents:   (row.paid_amount_cents as number) ?? null,
-    paidAt:            (row.paid_at as string) ?? null,
-    createdAt:         row.created_at as string,
-    patient:           row.patient as Appointment['patient'],
-    professional:      row.professional as Appointment['professional'],
-  }
+/** Returns ALL professional records for the current user across all their clinics.
+ *  Uses user_clinic_memberships (fast) and falls back to email match for legacy records. */
+export interface ProfessionalRecord { id: string; clinicId: string; clinicName: string | null }
+
+export function useMyProfessionalRecords() {
+  const { session } = useAuthContext()
+  const email = session?.user.email
+  return useQuery({
+    queryKey: ['my-professional-records', session?.user.id],
+    enabled: !!session?.user.id,
+    staleTime: 60_000, // 1 min — runs on every page via AppLayout, cache it
+    queryFn: async (): Promise<ProfessionalRecord[]> => {
+      // Primary: direct user_id on professionals table (works for any role)
+      const { data: direct } = await supabase
+        .from('professionals')
+        .select('id, clinic_id, clinics(id, name)')
+        .eq('user_id', session!.user.id)
+        .eq('active', true)
+
+      if (direct && direct.length > 0) {
+        return direct.map(r => ({
+          id:        r.id as string,
+          clinicId:  r.clinic_id as string,
+          clinicName: ((r.clinics as { name?: string } | null)?.name) ?? null,
+        }))
+      }
+
+      // Secondary: user_clinic_memberships → professional_id (multi-clinic professionals)
+      const { data: memberships } = await supabase
+        .from('user_clinic_memberships')
+        .select('professional_id, clinic_id, clinics(id, name)')
+        .eq('user_id', session!.user.id)
+        .eq('active', true)
+        .not('professional_id', 'is', null)
+
+      if (memberships && memberships.length > 0) {
+        return memberships.map((m: any) => ({
+          id:        m.professional_id as string,
+          clinicId:  m.clinic_id as string,
+          clinicName: ((m.clinics as { name?: string } | null)?.name) ?? null,
+        }))
+      }
+
+      // Fallback: email match (legacy records without user_id)
+      if (!email) return []
+      const { data: byEmail } = await supabase
+        .from('professionals')
+        .select('id, clinic_id, clinics(id, name)')
+        .ilike('email', email)
+        .eq('active', true)
+      return (byEmail ?? []).map(r => ({
+        id:        r.id as string,
+        clinicId:  r.clinic_id as string,
+        clinicName: ((r.clinics as { name?: string } | null)?.name) ?? null,
+      }))
+    },
+  })
 }
 
-export function useAppointmentsQuery(startsFrom: string, startsUntil: string) {
+/** @deprecated use useMyProfessionalRecords instead */
+export function useProfessionalId() {
+  const records = useMyProfessionalRecords()
+  return { ...records, data: records.data?.[0]?.id ?? null }
+}
+
+export function useAppointmentsQuery(
+  startsFrom: string,
+  startsUntil: string,
+  /** Filter by one or many professional IDs (for professional role: pass all their IDs) */
+  professionalFilter?: string | string[] | null,
+) {
+  const ids = professionalFilter
+    ? Array.isArray(professionalFilter) ? professionalFilter : [professionalFilter]
+    : null
+
   return useQuery({
-    queryKey: ['appointments', startsFrom, startsUntil],
+    queryKey: ['appointments', startsFrom, startsUntil, ids ?? 'all'],
+    // Skip query when ids is an explicit empty array (personal view before prof records load,
+    // or professional with no linked record) — prevents leaking all-clinic appointments.
+    enabled: ids === null || ids.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('appointments')
-        .select(`*, patient:patients(id,name,phone), professional:professionals(id,name,specialty)`)
+        .select(`*, patient:patients(id,name,phone), professional:professionals(id,name,specialty), clinic_room:clinic_rooms(id,name,color), clinics(id,name)`)
         .gte('starts_at', startsFrom)
         .lte('starts_at', startsUntil)
         .order('starts_at')
+      if (ids && ids.length > 0) {
+        q = ids.length === 1
+          ? q.eq('professional_id', ids[0])
+          : q.in('professional_id', ids)
+      }
+      const { data, error } = await q
       if (error) throw error
-      return (data ?? []).map(r => mapRow(r as Record<string, unknown>))
+      return (data ?? []).map(r => ({
+        ...mapAppointment(r as Record<string, unknown>),
+        clinicName: ((r as Record<string, unknown>).clinics as { name?: string } | null)?.name ?? null,
+      }))
     },
   })
 }
@@ -44,11 +113,15 @@ export interface AppointmentInput {
   endsAt: string
   status: Appointment['status']
   notes?: string | null
+  room?: string | null
+  roomId?: string | null
   chargeAmountCents?: number | null
+  professionalFeeCents?: number | null
 }
 
 export function useAppointmentMutations() {
   const qc = useQueryClient()
+  const { profile } = useAuthContext()
   const invalidate = () => qc.invalidateQueries({ queryKey: ['appointments'] })
 
   const create = useMutation({
@@ -56,18 +129,22 @@ export function useAppointmentMutations() {
       const { data, error } = await supabase
         .from('appointments')
         .insert({
-          patient_id:           input.patientId,
-          professional_id:      input.professionalId,
-          starts_at:            input.startsAt,
-          ends_at:              input.endsAt,
-          status:               input.status,
-          notes:                input.notes ?? null,
-          charge_amount_cents:  input.chargeAmountCents ?? null,
+          clinic_id:               profile!.clinicId!,
+          patient_id:              input.patientId,
+          professional_id:         input.professionalId,
+          starts_at:               input.startsAt,
+          ends_at:                 input.endsAt,
+          status:                  input.status,
+          notes:                   input.notes ?? null,
+          room:                    input.room ?? null,
+          room_id:                 input.roomId ?? null,
+          charge_amount_cents:     input.chargeAmountCents ?? null,
+          professional_fee_cents:  input.professionalFeeCents ?? null,
         })
-        .select()
+        .select(`*, patient:patients(id,name,phone), professional:professionals(id,name,specialty), clinic_room:clinic_rooms(id,name,color)`)
         .single()
       if (error) throw error
-      return mapRow(data as Record<string, unknown>)
+      return mapAppointment(data as Record<string, unknown>)
     },
     onSuccess: invalidate,
   })
@@ -77,19 +154,22 @@ export function useAppointmentMutations() {
       const { data, error } = await supabase
         .from('appointments')
         .update({
-          patient_id:           input.patientId,
-          professional_id:      input.professionalId,
-          starts_at:            input.startsAt,
-          ends_at:              input.endsAt,
-          status:               input.status,
-          notes:                input.notes ?? null,
-          charge_amount_cents:  input.chargeAmountCents ?? null,
+          patient_id:              input.patientId,
+          professional_id:         input.professionalId,
+          starts_at:               input.startsAt,
+          ends_at:                 input.endsAt,
+          status:                  input.status,
+          notes:                   input.notes ?? null,
+          room:                    input.room ?? null,
+          room_id:                 input.roomId ?? null,
+          charge_amount_cents:     input.chargeAmountCents ?? null,
+          professional_fee_cents:  input.professionalFeeCents ?? null,
         })
         .eq('id', id)
-        .select()
+        .select(`*, patient:patients(id,name,phone), professional:professionals(id,name,specialty), clinic_room:clinic_rooms(id,name,color)`)
         .single()
       if (error) throw error
-      return mapRow(data as Record<string, unknown>)
+      return mapAppointment(data as Record<string, unknown>)
     },
     onSuccess: invalidate,
   })

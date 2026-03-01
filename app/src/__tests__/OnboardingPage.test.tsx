@@ -90,13 +90,13 @@ function mockPendingInvite() {
     clinicId: 'clinic-1',
     clinicName: 'Clínica Saúde',
     email: 'pedro@test.com',
-    role: 'professional' as const,
+    roles: ['professional'] as import('../types').UserRole[],
     name: 'Pedro',
     invitedBy: null,
     usedAt: null,
     createdAt: new Date().toISOString(),
   }
-  vi.mocked(useMyInvite).mockReturnValue({ data: fakeInvite, isLoading: false } as ReturnType<typeof useMyInvite>)
+  vi.mocked(useMyInvite).mockReturnValue({ data: fakeInvite, isLoading: false } as unknown as ReturnType<typeof useMyInvite>)
   vi.mocked(useClinicsPublic).mockReturnValue({ data: [] as {id:string;name:string}[], isLoading: false } as unknown as ReturnType<typeof useClinicsPublic>)
   vi.mocked(useAcceptInvite).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false } as unknown as ReturnType<typeof useAcceptInvite>)
   return fakeInvite
@@ -241,7 +241,7 @@ describe('OnboardingPage — invite view', () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ inviteId: 'inv-1', clinicId: 'clinic-1', role: 'professional' }),
+        expect.objectContaining({ inviteId: 'inv-1', clinicId: 'clinic-1', roles: ['professional'] }),
       )
     })
   })

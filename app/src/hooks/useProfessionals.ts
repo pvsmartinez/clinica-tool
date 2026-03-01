@@ -1,26 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../services/supabase'
+import { useAuthContext } from '../contexts/AuthContext'
+import type { Json, ProfessionalInput } from '../types'
 import type { Professional } from '../types'
 
 function mapRow(r: Record<string, unknown>): Professional {
   return {
-    id:          r.id as string,
-    clinicId:    r.clinic_id as string,
-    name:        r.name as string,
-    specialty:   (r.specialty as string) ?? null,
-    councilId:   (r.council_id as string) ?? null,
-    phone:       (r.phone as string) ?? null,
-    email:       (r.email as string) ?? null,
-    active:      r.active as boolean,
-    createdAt:   r.created_at as string,
+    id:           r.id as string,
+    clinicId:     r.clinic_id as string,
+    userId:       (r.user_id as string) ?? null,
+    name:         r.name as string,
+    specialty:    (r.specialty as string) ?? null,
+    councilId:    (r.council_id as string) ?? null,
+    phone:        (r.phone as string) ?? null,
+    email:        (r.email as string) ?? null,
+    active:       r.active as boolean,
+    customFields: (r.custom_fields as Record<string, unknown>) ?? {},
+    createdAt:    r.created_at as string,
   }
 }
 
 export function useProfessionals() {
   const qc = useQueryClient()
+  const { profile } = useAuthContext()
 
   const query = useQuery({
-    queryKey: ['professionals'],
+    queryKey: ['professionals', profile?.clinicId ?? null],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('professionals')
@@ -32,23 +37,25 @@ export function useProfessionals() {
   })
 
   const create = useMutation({
-    mutationFn: async (input: Omit<Professional, 'id' | 'clinicId' | 'createdAt'>) => {
+    mutationFn: async (input: ProfessionalInput) => {
       const { data, error } = await supabase
         .from('professionals')
         .insert({
-          name:       input.name,
-          specialty:  input.specialty,
-          council_id: input.councilId,
-          phone:      input.phone,
-          email:      input.email,
-          active:     input.active,
+          clinic_id:     profile!.clinicId!,
+          name:          input.name,
+          specialty:     input.specialty,
+          council_id:    input.councilId,
+          phone:         input.phone,
+          email:         input.email,
+          active:        input.active,
+          custom_fields: (input.customFields ?? {}) as Json,
         })
         .select()
         .single()
       if (error) throw error
       return mapRow(data as Record<string, unknown>)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['professionals'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['professionals', profile?.clinicId ?? null] }),
   })
 
   const update = useMutation({
@@ -56,12 +63,13 @@ export function useProfessionals() {
       const { data, error } = await supabase
         .from('professionals')
         .update({
-          name:       input.name,
-          specialty:  input.specialty,
-          council_id: input.councilId,
-          phone:      input.phone,
-          email:      input.email,
-          active:     input.active,
+          name:          input.name,
+          specialty:     input.specialty,
+          council_id:    input.councilId,
+          phone:         input.phone,
+          email:         input.email,
+          active:        input.active,
+          custom_fields: (input.customFields ?? {}) as Json,
         })
         .eq('id', id)
         .select()
@@ -69,7 +77,7 @@ export function useProfessionals() {
       if (error) throw error
       return mapRow(data as Record<string, unknown>)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['professionals'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['professionals', profile?.clinicId ?? null] }),
   })
 
   const toggleActive = useMutation({
@@ -80,7 +88,7 @@ export function useProfessionals() {
         .eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['professionals'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['professionals', profile?.clinicId ?? null] }),
   })
 
   return { ...query, create, update, toggleActive }

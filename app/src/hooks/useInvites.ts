@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../services/supabase'
+import { useAuthContext } from '../contexts/AuthContext'
 import type { ClinicInvite, UserRole } from '../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -10,7 +11,7 @@ function mapInviteRow(r: Record<string, unknown>): ClinicInvite {
     clinicId:   r.clinic_id as string,
     clinicName: clinic?.name,
     email:      r.email as string,
-    role:       r.role as UserRole,
+    roles:      (r.roles as UserRole[]) ?? ['professional'],
     name:       (r.name as string) ?? null,
     invitedBy:  (r.invited_by as string) ?? null,
     usedAt:     (r.used_at as string) ?? null,
@@ -78,17 +79,19 @@ export function useClinicsPublic() {
 // Clinic admin creates an invite for a future professional/staff.
 export function useCreateInvite() {
   const qc = useQueryClient()
+  const { profile } = useAuthContext()
   return useMutation({
     mutationFn: async (input: {
       email: string
-      role?: UserRole
+      roles?: UserRole[]
       name?: string
     }) => {
       const { data, error } = await supabase
         .from('clinic_invites')
         .insert({
+          clinic_id: profile!.clinicId!,
           email: input.email.toLowerCase().trim(),
-          role:  input.role ?? 'professional',
+          roles: input.roles ?? ['professional'],
           name:  input.name ?? null,
         })
         .select('*, clinics(name)')
@@ -118,37 +121,129 @@ export function useDeleteInvite() {
 
 // ─── useAcceptInvite ──────────────────────────────────────────────────────────
 // Called during onboarding when the user accepts a professional/staff invite.
-// Creates the user_profiles row and marks the invite as used.
+// For professionals this also creates / links their `professionals` record
+// and adds a `user_clinic_memberships` entry so multi-clinic works from day 1.
 export function useAcceptInvite() {
   return useMutation({
     mutationFn: async (params: {
       inviteId: string
       userId: string
       clinicId: string
-      role: UserRole
+      roles: UserRole[]
       name: string
+      email?: string   // auth user email — used to find / create professionals record
     }) => {
-      // 1. Create user_profiles
-      const { error: profileErr } = await supabase
+      // 1. Create user_profiles (only if it doesn't exist yet — second-clinic accepts skip this)
+      const { data: existingProfile } = await supabase
         .from('user_profiles')
-        .insert({
-          id:             params.userId,
-          clinic_id:      params.clinicId,
-          role:           params.role,
-          name:           params.name.trim(),
-          is_super_admin: false,
-        })
-      if (profileErr) throw new Error(profileErr.message)
+        .select('id')
+        .eq('id', params.userId)
+        .maybeSingle()
 
-      // 2. Mark invite as used
+      if (!existingProfile) {
+        const { error: profileErr } = await supabase
+          .from('user_profiles')
+          .insert({
+            id:             params.userId,
+            clinic_id:      params.clinicId,
+            roles:          params.roles,
+            name:           params.name.trim(),
+            is_super_admin: false,
+          })
+        if (profileErr) throw new Error(profileErr.message)
+      }
+
+      // 2. For professional role: ensure a professionals record exists at this clinic
+      //    and link user_id so multi-clinic queries work.
+      let professionalId: string | null = null
+      if (params.roles.includes('professional')) {
+        // Check if admin already created a professionals record with this email
+        const { data: existingProf } = await supabase
+          .from('professionals')
+          .select('id')
+          .eq('clinic_id', params.clinicId)
+          .ilike('email', params.email ?? '')
+          .maybeSingle()
+
+        if (existingProf) {
+          // Link user_id to existing record
+          await (supabase as any)
+            .from('professionals')
+            .update({ user_id: params.userId })
+            .eq('id', existingProf.id)
+          professionalId = existingProf.id as string
+        } else {
+          // Create a new professionals record for this clinic
+          const { data: newProf, error: profErr } = await (supabase as any)
+            .from('professionals')
+            .insert({
+              clinic_id: params.clinicId,
+              user_id:   params.userId,
+              name:      params.name.trim(),
+              email:     params.email ?? null,
+              active:    true,
+            })
+            .select('id')
+            .single()
+          if (profErr) throw new Error(profErr.message)
+          professionalId = (newProf as { id: string }).id
+        }
+
+        // 3. Upsert user_clinic_memberships entry
+        await (supabase as any)
+          .from('user_clinic_memberships')
+          .upsert(
+            {
+              user_id:         params.userId,
+              clinic_id:       params.clinicId,
+              professional_id: professionalId,
+              active:          true,
+            },
+            { onConflict: 'user_id,clinic_id' },
+          )
+      }
+
+      // 4. Mark invite as used
       const { error: inviteErr } = await supabase
         .from('clinic_invites')
         .update({ used_at: new Date().toISOString() })
         .eq('id', params.inviteId)
       if (inviteErr) throw new Error(inviteErr.message)
 
-      // 3. Refresh the session so AuthContext picks up the new profile
+      // 5. Refresh the session so AuthContext picks up the new profile
       await supabase.auth.refreshSession()
+    },
+  })
+}
+
+// ─── useMyClinicMemberships ───────────────────────────────────────────────────
+// Returns all clinic memberships for the current user.
+// Professionals with multi-clinic: returns one entry per clinic.
+export function useMyClinicMemberships() {
+  const { session } = useAuthContext()
+  return useQuery({
+    queryKey: ['my-clinic-memberships', session?.user.id],
+    enabled: !!session?.user.id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('user_clinic_memberships')
+        .select('*, clinics(id, name)')
+        .eq('user_id', session!.user.id)
+        .eq('active', true)
+        .order('created_at')
+      if (error) throw error
+      return (data ?? []).map((r: any) => {
+        const clinic = r.clinics as { id: string; name: string } | null
+        return {
+          id:             r.id as string,
+          userId:         r.user_id as string,
+          clinicId:       r.clinic_id as string,
+          clinicName:     clinic?.name ?? null,
+          professionalId: (r.professional_id as string) ?? null,
+          active:         r.active as boolean,
+          createdAt:      r.created_at as string,
+        }
+      })
     },
   })
 }

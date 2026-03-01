@@ -22,8 +22,12 @@ vi.mock('../services/supabase', () => ({
   supabase: {
     auth: {
       getSession: () => mockGetSession(),
-      onAuthStateChange: (cb: unknown) => {
+      onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
         mockOnAuthStateChange(cb)
+        // Simulate Supabase v2 firing INITIAL_SESSION after registration
+        Promise.resolve()
+          .then(() => mockGetSession())
+          .then((res: { data: { session: unknown } }) => cb('INITIAL_SESSION', res.data.session))
         return { data: { subscription: { unsubscribe: mockUnsubscribe } } }
       },
     },
@@ -37,7 +41,7 @@ function makeProfileRow(role: string) {
   return {
     id: 'user-test-1',
     clinic_id: 'clinic-1',
-    role,
+    roles: [role],
     name: 'Test User',
     is_super_admin: false,
   }

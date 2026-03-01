@@ -76,3 +76,53 @@ export function formatPhone(phone: string): string {
   if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
   return d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
 }
+
+/** Auto-detecta CPF (11 dígitos) ou CNPJ (14 dígitos) e valida */
+export function validateCpfCnpj(raw: string): boolean {
+  const d = raw.replace(/\D/g, '')
+  if (d.length === 11) return validateCPF(raw).valid
+  if (d.length === 14) return validateCNPJ(raw).valid
+  return false
+}
+
+/** Máscara dinâmica: aplica CPF até 11 dígitos, CNPJ acima */
+export function maskCpfCnpj(v: string): string {
+  const digits = v.replace(/\D/g, '')
+  if (digits.length <= 11) return formatCPF(v)
+  return formatCNPJ(v)
+}
+
+/** Format CEP: 00000-000 */
+export function maskCEP(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 8)
+  if (d.length <= 5) return d
+  return `${d.slice(0, 5)}-${d.slice(5)}`
+}
+
+// ─── ViaCEP ──────────────────────────────────────────────────────────────────
+
+export interface AddressFromCEP {
+  logradouro: string  // rua
+  bairro: string      // bairro
+  localidade: string  // cidade
+  uf: string          // estado (ex: SP)
+  erro?: boolean
+}
+
+/**
+ * Busca endereço pelo CEP via ViaCEP (API pública, CORS habilitado).
+ * Retorna null se CEP inválido ou não encontrado.
+ */
+export async function fetchAddressByCEP(cep: string): Promise<AddressFromCEP | null> {
+  const digits = cep.replace(/\D/g, '')
+  if (digits.length !== 8) return null
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`)
+    if (!res.ok) return null
+    const data = await res.json() as AddressFromCEP
+    if (data.erro) return null
+    return data
+  } catch {
+    return null
+  }
+}

@@ -1,41 +1,25 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { format, startOfMonth, endOfMonth, subMonths, parseISO, eachDayOfInterval } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line,
 } from 'recharts'
-import { FilePdf } from '@phosphor-icons/react'
+import {
+  FilePdf, FileCsv, DownloadSimple, Users, UserCircle,
+} from '@phosphor-icons/react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { useReportData, useProfessionalsList } from '../hooks/useRelatorios'
+import { formatBRL } from '../utils/currency'
+import { APPOINTMENT_STATUS_LABELS, SEX_LABELS } from '../types'
+import {
+  exportAppointmentsCSV,
+  exportPatientsCSV,
+  exportProfessionalsCSV,
+  exportFinanceCSV,
+} from '../utils/exportCSV'
+import { toast } from 'sonner'
 import { supabase } from '../services/supabase'
-import { formatBRL } from '../hooks/useFinancial'
-import { APPOINTMENT_STATUS_LABELS } from '../types'
-
-// ─── Data hooks ──────────────────────────────────────────────────────────────
-
-function useReportData(month: Date) {
-  const monthStart = startOfMonth(month).toISOString()
-  const monthEnd   = endOfMonth(month).toISOString()
-
-  return useQuery({
-    queryKey: ['report', monthStart],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id, starts_at, status, charge_amount_cents, paid_amount_cents,
-          patient:patients(id, name),
-          professional:professionals(id, name)
-        `)
-        .gte('starts_at', monthStart)
-        .lte('starts_at', monthEnd)
-        .order('starts_at')
-      if (error) throw error
-      return data ?? []
-    },
-  })
-}
 
 // ─── PDF export ──────────────────────────────────────────────────────────────
 
@@ -75,9 +59,16 @@ type RawRow = Record<string, unknown>
 
 export default function RelatoriosPage() {
   const [month, setMonth] = useState(new Date())
-  const { data = [], isLoading } = useReportData(month)
+  const [professionalId, setProfessionalId] = useState('')
+  const [exportingPatients, setExportingPatients] = useState(false)
+  const [exportingProfessionals, setExportingProfessionals] = useState(false)
+  const [exportingFinance, setExportingFinance] = useState(false)
+
+  const { data = [], isLoading } = useReportData(month, professionalId)
+  const { data: professionals = [] } = useProfessionalsList()
 
   const monthLabel = format(month, "MMMM 'de' yyyy", { locale: ptBR })
+  const fileMonth  = format(month, 'yyyy-MM')
 
   // Build daily consultation count chart data
   const days = eachDayOfInterval({
@@ -125,12 +116,126 @@ export default function RelatoriosPage() {
     exportPDF(monthLabel, rows, { count: totalCount, charged: totalCharged, received: totalReceived })
   }
 
+  // ── Build appointment export rows ──
+  function buildExportRows() {
+    return (data as RawRow[]).map(r => ({
+      date:         format(parseISO(r.starts_at as string), 'dd/MM/yyyy HH:mm'),
+      patient:      (r.patient as { name: string } | null)?.name ?? '—',
+      professional: (r.professional as { name: string } | null)?.name ?? '—',
+      status:       APPOINTMENT_STATUS_LABELS[r.status as keyof typeof APPOINTMENT_STATUS_LABELS] ?? String(r.status),
+      notes:        (r.notes as string | null) ?? '',
+      charge:       formatBRL((r.charge_amount_cents as number) ?? null),
+      paid:         formatBRL((r.paid_amount_cents as number) ?? null),
+    }))
+  }
+
+  function handleExportCSV() {
+    exportAppointmentsCSV(buildExportRows(), `consultas-${fileMonth}.csv`)
+  }
+
+  // ── Finance export ──
+  async function handleExportFinance() {
+    setExportingFinance(true)
+    try {
+      const monthStart = startOfMonth(month).toISOString()
+      const monthEnd   = endOfMonth(month).toISOString()
+      let q = supabase
+        .from('appointments')
+        .select(`
+          starts_at, status, charge_amount_cents, paid_amount_cents, paid_at,
+          patient:patients(name), professional:professionals(name)
+        `)
+        .gte('starts_at', monthStart)
+        .lte('starts_at', monthEnd)
+        .order('starts_at')
+      if (professionalId) q = q.eq('professional_id', professionalId)
+      const { data: rows, error } = await q
+      if (error) throw error
+      exportFinanceCSV(
+        (rows ?? []).map(r => ({
+          date:         format(parseISO(r.starts_at), 'dd/MM/yyyy HH:mm'),
+          patient:      (r.patient as { name: string } | null)?.name ?? '—',
+          professional: (r.professional as { name: string } | null)?.name ?? '—',
+          chargeAmount: formatBRL((r.charge_amount_cents as number | null) ?? null),
+          paidAmount:   formatBRL((r.paid_amount_cents as number | null) ?? null),
+          paidAt:       r.paid_at ? format(parseISO(r.paid_at), 'dd/MM/yyyy') : '—',
+          status:       APPOINTMENT_STATUS_LABELS[r.status as keyof typeof APPOINTMENT_STATUS_LABELS] ?? r.status,
+        })),
+        `financeiro-${fileMonth}.csv`,
+      )
+    } catch {
+      toast.error('Erro ao exportar financeiro')
+    } finally {
+      setExportingFinance(false)
+    }
+  }
+
+  // ── Patients export ──
+  async function handleExportPatients() {
+    setExportingPatients(true)
+    try {
+      const { data: patients, error } = await supabase.from('patients').select('*').order('name')
+      if (error) throw error
+      exportPatientsCSV(
+        (patients ?? []).map(p => ({
+          name:      p.name ?? '',
+          cpf:       p.cpf ?? '',
+          rg:        p.rg ?? '',
+          birthDate: p.birth_date ?? '',
+          sex:       p.sex ? (SEX_LABELS[p.sex as keyof typeof SEX_LABELS] ?? p.sex) : '',
+          phone:     p.phone ?? '',
+          email:     p.email ?? '',
+          address:   [p.address_street, p.address_number, p.address_complement].filter(Boolean).join(', '),
+          city:      p.address_city ?? '',
+          state:     p.address_state ?? '',
+          zip:       p.address_zip ?? '',
+          notes:     p.notes ?? '',
+          createdAt: p.created_at ? format(parseISO(p.created_at), 'dd/MM/yyyy') : '',
+        })),
+        'pacientes.csv',
+      )
+      toast.success(`${patients?.length ?? 0} pacientes exportados`)
+    } catch {
+      toast.error('Erro ao exportar pacientes')
+    } finally {
+      setExportingPatients(false)
+    }
+  }
+
+  // ── Professionals export ──
+  async function handleExportProfessionals() {
+    setExportingProfessionals(true)
+    try {
+      const { data: profs, error } = await supabase.from('professionals').select('*').order('name')
+      if (error) throw error
+      exportProfessionalsCSV(
+        (profs ?? []).map(p => ({
+          name:      p.name ?? '',
+          specialty: p.specialty ?? '',
+          councilId: p.council_id ?? '',
+          phone:     p.phone ?? '',
+          email:     p.email ?? '',
+          active:    p.active ? 'Sim' : 'Não',
+          createdAt: p.created_at ? format(parseISO(p.created_at), 'dd/MM/yyyy') : '',
+        })),
+        'profissionais.csv',
+      )
+      toast.success(`${profs?.length ?? 0} profissionais exportados`)
+    } catch {
+      toast.error('Erro ao exportar profissionais')
+    } finally {
+      setExportingProfessionals(false)
+    }
+  }
+
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-xl font-semibold text-gray-800">Relatórios</h1>
-        <div className="flex items-center gap-3">
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Month selector */}
           <select
             value={format(month, 'yyyy-MM')}
             onChange={e => {
@@ -145,13 +250,37 @@ export default function RelatoriosPage() {
               </option>
             ))}
           </select>
+
+          {/* Professional filter */}
+          <select
+            value={professionalId}
+            onChange={e => setProfessionalId(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Todos os profissionais</option>
+            {professionals.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+
+          {/* PDF export */}
           <button
             onClick={handleExport}
             disabled={isLoading || data.length === 0}
-            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
+            className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
           >
             <FilePdf size={16} />
-            Exportar PDF
+            PDF
+          </button>
+
+          {/* CSV appointments */}
+          <button
+            onClick={handleExportCSV}
+            disabled={isLoading || data.length === 0}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
+          >
+            <FileCsv size={16} />
+            CSV Consultas
           </button>
         </div>
       </div>
@@ -164,9 +293,9 @@ export default function RelatoriosPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: 'Consultas realizadas', value: String(totalCount) },
-              { label: 'Status distribu.', value: `${statusBreakdown.length} tipos` },
-              { label: 'Total cobrado', value: formatBRL(totalCharged) },
-              { label: 'Total recebido', value: formatBRL(totalReceived) },
+              { label: 'Status distribu.',     value: `${statusBreakdown.length} tipos` },
+              { label: 'Total cobrado',        value: formatBRL(totalCharged) },
+              { label: 'Total recebido',       value: formatBRL(totalReceived) },
             ].map(c => (
               <div key={c.label} className="bg-white border border-gray-200 rounded-xl p-4">
                 <p className="text-xs text-gray-500 mb-1">{c.label}</p>
@@ -215,17 +344,96 @@ export default function RelatoriosPage() {
               </ResponsiveContainer>
             </ChartCard>
           )}
+
+          {/* ── Exportações de dados ─────────────────────────────────────── */}
+          <div>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Exportar dados
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <ExportCard
+                icon={<DownloadSimple size={22} className="text-emerald-600" />}
+                title="Financeiro"
+                description={`Pagamentos de ${monthLabel}`}
+                loading={exportingFinance}
+                onClick={handleExportFinance}
+                color="emerald"
+              />
+              <ExportCard
+                icon={<Users size={22} className="text-blue-600" />}
+                title="Pacientes"
+                description="Todos os pacientes cadastrados"
+                loading={exportingPatients}
+                onClick={handleExportPatients}
+                color="blue"
+              />
+              <ExportCard
+                icon={<UserCircle size={22} className="text-violet-600" />}
+                title="Profissionais"
+                description="Todos os profissionais cadastrados"
+                loading={exportingProfessionals}
+                onClick={handleExportProfessionals}
+                color="violet"
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Arquivos CSV compatíveis com Excel, Google Sheets e outros sistemas.
+            </p>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
+// ─── ChartCard ────────────────────────────────────────────────────────────────
+
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
       <h2 className="text-sm font-semibold text-gray-600 mb-4">{title}</h2>
       {children}
+    </div>
+  )
+}
+
+// ─── ExportCard ───────────────────────────────────────────────────────────────
+
+type ColorVariant = 'emerald' | 'blue' | 'violet'
+
+const btnColors: Record<ColorVariant, string> = {
+  emerald: 'bg-emerald-600 hover:bg-emerald-700',
+  blue:    'bg-blue-600 hover:bg-blue-700',
+  violet:  'bg-violet-600 hover:bg-violet-700',
+}
+
+function ExportCard({
+  icon, title, description, loading, onClick, color,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+  loading: boolean
+  onClick: () => void
+  color: ColorVariant
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        {icon}
+        <div>
+          <p className="text-sm font-semibold text-gray-800">{title}</p>
+          <p className="text-xs text-gray-500">{description}</p>
+        </div>
+      </div>
+      <button
+        onClick={onClick}
+        disabled={loading}
+        className={`flex items-center justify-center gap-2 text-white text-sm font-medium py-1.5 rounded-lg transition disabled:opacity-50 ${btnColors[color]}`}
+      >
+        <FileCsv size={15} />
+        {loading ? 'Exportando...' : 'Exportar CSV'}
+      </button>
     </div>
   )
 }

@@ -1,0 +1,94 @@
+/**
+ * Shared row-mappers: convert Supabase snake_case DB rows → camelCase domain types.
+ * Single source of truth — import these instead of defining local mapRow functions.
+ */
+import type { Appointment, Clinic, Patient } from '../types'
+
+// ─── Appointment ──────────────────────────────────────────────────────────────
+
+export function mapAppointment(row: Record<string, unknown>): Appointment {
+  return {
+    id:                   row.id as string,
+    clinicId:             row.clinic_id as string,
+    patientId:            row.patient_id as string,
+    professionalId:       row.professional_id as string,
+    startsAt:             row.starts_at as string,
+    endsAt:               row.ends_at as string,
+    status:               row.status as Appointment['status'],
+    notes:                (row.notes as string) ?? null,
+    room:                 (row.room as string) ?? null,
+    roomId:               (row.room_id as string) ?? null,
+    chargeAmountCents:    (row.charge_amount_cents as number) ?? null,
+    paidAmountCents:      (row.paid_amount_cents as number) ?? null,
+    professionalFeeCents: (row.professional_fee_cents as number) ?? null,
+    paidAt:               (row.paid_at as string) ?? null,
+    createdAt:            row.created_at as string,
+    patient:              row.patient as Appointment['patient'],
+    professional:         row.professional as Appointment['professional'],
+    clinicRoom:           row.clinic_room as Appointment['clinicRoom'],
+  }
+}
+
+// ─── Clinic ───────────────────────────────────────────────────────────────────
+
+export function mapClinic(r: Record<string, unknown>): Clinic {
+  return {
+    id:                       r.id as string,
+    name:                     r.name as string,
+    cnpj:                     (r.cnpj as string) ?? null,
+    phone:                    (r.phone as string) ?? null,
+    email:                    (r.email as string) ?? null,
+    address:                  (r.address as string) ?? null,
+    city:                     (r.city as string) ?? null,
+    state:                    (r.state as string) ?? null,
+    slotDurationMinutes:      (r.slot_duration_minutes as number) ?? 30,
+    workingHours:             (r.working_hours as Clinic['workingHours']) ?? {},
+    customPatientFields:      (r.custom_patient_fields as Clinic['customPatientFields']) ?? [],
+    patientFieldConfig:       (r.patient_field_config as Clinic['patientFieldConfig']) ?? {},
+    customProfessionalFields: (r.custom_professional_fields as Clinic['customProfessionalFields']) ?? [],
+    professionalFieldConfig:  (r.professional_field_config as Clinic['professionalFieldConfig']) ?? {},
+    onboardingCompleted:      (r.onboarding_completed as boolean) ?? false,
+    createdAt:                r.created_at as string,
+    paymentsEnabled:          (r.payments_enabled as boolean) ?? false,
+    asaasCustomerId:          (r.asaas_customer_id as string) ?? null,
+    asaasSubscriptionId:      (r.asaas_subscription_id as string) ?? null,
+    subscriptionStatus:       (r.subscription_status as Clinic['subscriptionStatus']) ?? null,
+    whatsappEnabled:          (r.whatsapp_enabled as boolean) ?? false,
+    whatsappPhoneNumberId:    (r.whatsapp_phone_number_id as string) ?? null,
+    whatsappPhoneDisplay:     (r.whatsapp_phone_display as string) ?? null,
+    whatsappWabaId:           (r.whatsapp_waba_id as string) ?? null,
+    whatsappVerifyToken:      (r.whatsapp_verify_token as string) ?? null,
+    waRemindersd1:            (r.wa_reminders_d1 as boolean) ?? true,
+    waRemindersd0:            (r.wa_reminders_d0 as boolean) ?? true,
+    waProfessionalAgenda:     (r.wa_professional_agenda as boolean) ?? false,
+    waAttendantInbox:         (r.wa_attendant_inbox as boolean) ?? true,
+    waAiModel:                (r.wa_ai_model as string) ?? 'openai/gpt-4o-mini',
+  }
+}
+
+// ─── Patient ─────────────────────────────────────────────────────────────────────────────
+
+export function mapPatient(row: Record<string, unknown>): Patient {
+  return {
+    id:                   row.id as string,
+    clinicId:             row.clinic_id as string,
+    userId:               (row.user_id as string) ?? null,
+    name:                 row.name as string,
+    cpf:                  (row.cpf as string) ?? null,
+    rg:                   (row.rg as string) ?? null,
+    birthDate:            (row.birth_date as string) ?? null,
+    sex:                  (row.sex as Patient['sex']) ?? null,
+    phone:                (row.phone as string) ?? null,
+    email:                (row.email as string) ?? null,
+    addressStreet:        (row.address_street as string) ?? null,
+    addressNumber:        (row.address_number as string) ?? null,
+    addressComplement:    (row.address_complement as string) ?? null,
+    addressNeighborhood:  (row.address_neighborhood as string) ?? null,
+    addressCity:          (row.address_city as string) ?? null,
+    addressState:         (row.address_state as string) ?? null,
+    addressZip:           (row.address_zip as string) ?? null,
+    notes:                (row.notes as string) ?? null,
+    customFields:         (row.custom_fields as Record<string, unknown>) ?? {},
+    createdAt:            row.created_at as string,
+  }
+}

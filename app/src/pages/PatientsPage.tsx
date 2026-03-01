@@ -1,27 +1,40 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MagnifyingGlass, Plus, User } from '@phosphor-icons/react'
+import { MagnifyingGlass, Plus, User, UploadSimple } from '@phosphor-icons/react'
 import { usePatients } from '../hooks/usePatients'
+import { useDebounce } from '../hooks/useDebounce'
 import { formatDate } from '../utils/date'
 import { SEX_LABELS } from '../types'
+import ImportModal from '../components/ImportModal'
 
 export default function PatientsPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
-  const { patients, loading } = usePatients(search)
+  const [importOpen, setImportOpen] = useState(false)
+  const debouncedSearch = useDebounce(search, 300)
+  const { patients, loading, refetch } = usePatients(debouncedSearch)
 
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-gray-800">Pacientes</h1>
-        <button
-          onClick={() => navigate('/pacientes/novo')}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-        >
-          <Plus size={16} />
-          Novo paciente
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-2 border border-gray-300 hover:border-gray-400 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition"
+          >
+            <UploadSimple size={16} />
+            Importar CSV
+          </button>
+          <button
+            onClick={() => navigate('/pacientes/novo')}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+          >
+            <Plus size={16} />
+            Novo paciente
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -88,6 +101,12 @@ export default function PatientsPage() {
       {!loading && patients.length > 0 && (
         <p className="text-xs text-gray-400 mt-2 px-1">{patients.length} paciente{patients.length !== 1 ? 's' : ''}</p>
       )}
+
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => refetch()}
+      />
     </div>
   )
 }

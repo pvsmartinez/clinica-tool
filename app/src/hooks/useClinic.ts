@@ -1,23 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../services/supabase'
 import { useAuthContext } from '../contexts/AuthContext'
-import type { Clinic } from '../types'
+import { mapClinic } from '../utils/mappers'
+import type { Clinic, UserRole } from '../types'
 
-function mapRow(r: Record<string, unknown>): Clinic {
-  return {
-    id:                    r.id as string,
-    name:                  r.name as string,
-    cnpj:                  (r.cnpj as string) ?? null,
-    phone:                 (r.phone as string) ?? null,
-    email:                 (r.email as string) ?? null,
-    address:               (r.address as string) ?? null,
-    city:                  (r.city as string) ?? null,
-    state:                 (r.state as string) ?? null,
-    slotDurationMinutes:   (r.slot_duration_minutes as number) ?? 30,
-    workingHours:          (r.working_hours as Clinic['workingHours']) ?? {},
-    customPatientFields:   (r.custom_patient_fields as Clinic['customPatientFields']) ?? [],
-    createdAt:             r.created_at as string,
-  }
+export interface ClinicMember {
+  id:    string
+  name:  string
+  roles: UserRole[]
 }
 
 export function useClinic() {
@@ -35,7 +25,7 @@ export function useClinic() {
         .eq('id', clinicId!)
         .single()
       if (error) throw error
-      return mapRow(data as Record<string, unknown>)
+      return mapClinic(data as Record<string, unknown>)
     },
   })
 
@@ -44,25 +34,100 @@ export function useClinic() {
       const { data, error } = await supabase
         .from('clinics')
         .update({
-          name:                   input.name,
-          cnpj:                   input.cnpj,
-          phone:                  input.phone,
-          email:                  input.email,
-          address:                input.address,
-          city:                   input.city,
-          state:                  input.state,
-          slot_duration_minutes:  input.slotDurationMinutes,
-          working_hours:          input.workingHours,
-          custom_patient_fields:  input.customPatientFields,
-        })
+          name:                       input.name,
+          cnpj:                       input.cnpj,
+          phone:                      input.phone,
+          email:                      input.email,
+          address:                    input.address,
+          city:                       input.city,
+          state:                      input.state,
+          slot_duration_minutes:      input.slotDurationMinutes,
+          working_hours:              input.workingHours,
+          custom_patient_fields:      input.customPatientFields,
+          patient_field_config:       input.patientFieldConfig,
+          custom_professional_fields: input.customProfessionalFields,
+          professional_field_config:  input.professionalFieldConfig,
+          onboarding_completed:       input.onboardingCompleted,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...(input.paymentsEnabled      !== undefined ? { payments_enabled:      input.paymentsEnabled      } : {}),
+          ...(input.asaasCustomerId      !== undefined ? { asaas_customer_id:     input.asaasCustomerId      } : {}),
+          ...(input.asaasSubscriptionId  !== undefined ? { asaas_subscription_id: input.asaasSubscriptionId  } : {}),
+          ...(input.subscriptionStatus   !== undefined ? { subscription_status:   input.subscriptionStatus   } : {}),
+          // WhatsApp
+          ...(input.whatsappEnabled         !== undefined ? { whatsapp_enabled:           input.whatsappEnabled         } : {}),
+          ...(input.whatsappPhoneNumberId   !== undefined ? { whatsapp_phone_number_id:   input.whatsappPhoneNumberId   } : {}),
+          ...(input.whatsappPhoneDisplay    !== undefined ? { whatsapp_phone_display:      input.whatsappPhoneDisplay    } : {}),
+          ...(input.whatsappWabaId          !== undefined ? { whatsapp_waba_id:            input.whatsappWabaId          } : {}),
+          ...(input.whatsappVerifyToken     !== undefined ? { whatsapp_verify_token:       input.whatsappVerifyToken     } : {}),
+          ...(input.waRemindersd1           !== undefined ? { wa_reminders_d1:             input.waRemindersd1           } : {}),
+          ...(input.waRemindersd0           !== undefined ? { wa_reminders_d0:             input.waRemindersd0           } : {}),
+          ...(input.waProfessionalAgenda    !== undefined ? { wa_professional_agenda:      input.waProfessionalAgenda    } : {}),
+          ...(input.waAttendantInbox        !== undefined ? { wa_attendant_inbox:          input.waAttendantInbox        } : {}),
+          ...(input.waAiModel               !== undefined ? { wa_ai_model:                 input.waAiModel               } : {}),
+        } as Record<string, unknown>)
         .eq('id', clinicId!)
         .select()
         .single()
       if (error) throw error
-      return mapRow(data as Record<string, unknown>)
+      return mapClinic(data as Record<string, unknown>)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clinic', clinicId] }),
   })
 
   return { ...query, update }
+}
+// ─── Clinic members (user_profiles for current clinic) ───────────────────────
+export function useClinicMembers() {
+  const { profile } = useAuthContext()
+  const clinicId = profile?.clinicId
+
+  return useQuery<ClinicMember[]>({
+    queryKey: ['clinic-members', clinicId],
+    enabled: !!clinicId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, name, roles')
+        .eq('clinic_id', clinicId!)
+        .order('name')
+      if (error) throw error
+      return (data ?? []).map(r => ({
+        id:    r.id as string,
+        name:  r.name as string,
+        roles: (r.roles as UserRole[]) ?? [],
+      }))
+    },
+  })
+}
+
+export function useUpdateMemberRole() {
+  const qc = useQueryClient()
+  const { profile } = useAuthContext()
+  return useMutation({
+    mutationFn: async ({ memberId, roles }: { memberId: string; roles: UserRole[] }) => {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ roles })
+        .eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clinic-members', profile?.clinicId] }),
+  })
+}
+
+export function useRemoveClinicMember() {
+  const qc = useQueryClient()
+  const { profile } = useAuthContext()
+  return useMutation({
+    mutationFn: async (memberId: string) => {
+      // Unlink from clinic instead of deleting the auth profile — the user's
+      // account remains valid; they simply lose access to this clinic.
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ clinic_id: null, roles: [] })
+        .eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clinic-members', profile?.clinicId] }),
+  })
 }
